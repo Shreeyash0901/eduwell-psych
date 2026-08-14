@@ -1,0 +1,6 @@
+{
+  "name": "EduWell Psych",
+  "description": "School psychology assessment and student wellness observation management suite",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
