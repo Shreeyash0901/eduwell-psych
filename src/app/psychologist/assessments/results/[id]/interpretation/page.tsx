@@ -1,8 +1,19 @@
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 
+export function generateStaticParams() {
+  return [
+    { id: "SDQ" },
+    { id: "BASC-3" },
+    { id: "res-01" },
+    { id: "8472" },
+    { id: "1" }
+  ];
+}
+
 export default async function PsychologistInterpretationPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
+
   return (
     <div className="flex-1 p-space-lg max-w-container-max mx-auto w-full">
       {/* Header Section */}

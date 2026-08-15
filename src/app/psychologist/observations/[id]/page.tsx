@@ -1,9 +1,20 @@
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 
+export function generateStaticParams() {
+  return [
+    { id: "obs-01" },
+    { id: "obs-02" },
+    { id: "OBS-101" },
+    { id: "101" },
+    { id: "1" }
+  ];
+}
+
 export default async function ObservationDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const recordId = id ? id.replace(/^obs-/i, '') : '101'
+
   return (
     <div className="p-margin-mobile md:p-gutter max-w-container-max mx-auto w-full flex-1">
       {/* Header & Breadcrumbs */}

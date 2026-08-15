@@ -2,7 +2,18 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import Image from "next/image"
 
+export function generateStaticParams() {
+  return [
+    { id: "STU-8821" },
+    { id: "STU-4402" },
+    { id: "STU-9011" },
+    { id: "8821" },
+    { id: "1" }
+  ];
+}
+
 export default function StudentReportPreviewPage() {
+
   return (
     <div className="flex-1 overflow-y-auto p-margin-mobile md:p-gutter w-full max-w-container-max mx-auto pb-24 md:pb-gutter">
       {/* Header Actions */}

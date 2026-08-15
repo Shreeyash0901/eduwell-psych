@@ -1,6 +1,15 @@
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 
+export function generateStaticParams() {
+  return [
+    { id: "SDQ" },
+    { id: "BASC-3" },
+    { id: "sdq" },
+    { id: "1" }
+  ];
+}
+
 export default async function TakeAssessmentPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   // Mock assessment details based on the id
