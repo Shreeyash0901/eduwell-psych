@@ -9,6 +9,8 @@ export function generateStaticParams() {
     { id: "STU-8821" },
     { id: "STU-4402" },
     { id: "STU-9011" },
+    { id: "STU-94821" },
+    { id: "STU-94822" },
     { id: "8821" },
     { id: "1" }
   ];

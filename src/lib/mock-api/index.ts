@@ -138,6 +138,38 @@ let db = {
       parentPhone: '+1 (555) 432-1098',
       status: 'Urgent Intervention' as StudentStatus,
       attentionLevel: 'High Priority' as AttentionLevel
+    },
+    {
+      id: 'STU-94821',
+      name: 'Emma Thompson',
+      age: '15 Years',
+      dob: '2011-03-17',
+      gender: 'Female',
+      grade: '10A',
+      section: 'Science',
+      homeroomTeacher: 'Mr. Williams',
+      teacherId: 'TCH-106',
+      parentName: 'Helen Thompson',
+      parentRelation: 'Mother',
+      parentPhone: '+1 (555) 321-7654',
+      status: 'Active Monitoring' as StudentStatus,
+      attentionLevel: 'High Priority' as AttentionLevel
+    },
+    {
+      id: 'STU-94822',
+      name: 'Michael Johnson',
+      age: '16 Years',
+      dob: '2010-07-29',
+      gender: 'Male',
+      grade: '11B',
+      section: 'History',
+      homeroomTeacher: 'Ms. Rivera',
+      teacherId: 'TCH-107',
+      parentName: 'Tom Johnson',
+      parentRelation: 'Father',
+      parentPhone: '+1 (555) 654-3210',
+      status: 'Active' as StudentStatus,
+      attentionLevel: 'Normal' as AttentionLevel
     }
   ],
   assessments: [
