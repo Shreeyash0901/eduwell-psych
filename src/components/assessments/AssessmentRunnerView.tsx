@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AssessmentProtocol, Student, ActiveTab } from '../types';
+import { AssessmentProtocol, Student, ActiveTab } from '../../types';
 import { ArrowLeft, ArrowRight, CheckCircle2 } from 'lucide-react';
 
 interface AssessmentRunnerViewProps {

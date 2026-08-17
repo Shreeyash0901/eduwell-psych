@@ -1,4 +1,5 @@
 import express from "express";
+import http from "http";
 import path from "path";
 import { fileURLToPath } from "url";
 import { GoogleGenAI } from "@google/genai";
@@ -16,6 +17,7 @@ if (import.meta.url) {
 }
 
 const app = express();
+const server = http.createServer(app);
 const PORT = 3000;
 
 app.use(express.json());
@@ -70,7 +72,7 @@ Keep tone objective, supportive, and formatted in clear sections with bullet poi
 `;
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.6-flash",
+      model: "gemini-2.5-flash",
       contents: prompt,
     });
 
@@ -109,7 +111,7 @@ Generate a brief 3-paragraph clinical summary:
 `;
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.6-flash",
+      model: "gemini-2.5-flash",
       contents: prompt,
     });
 
@@ -125,7 +127,12 @@ async function setupViteOrStatic() {
   if (process.env.NODE_ENV !== "production") {
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: {
+          server,
+        },
+      },
       appType: "spa",
     });
     app.use(vite.middlewares);
@@ -137,8 +144,8 @@ async function setupViteOrStatic() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`EduWell Psych Server running on http://0.0.0.0:${PORT}`);
+  server.listen(PORT, () => {
+    console.log(`EduWell Psych Server running on http://localhost:${PORT}`);
   });
 }
 

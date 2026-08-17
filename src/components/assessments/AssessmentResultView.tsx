@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AssessmentResult, ActiveTab } from '../types';
+import { AssessmentResult, ActiveTab } from '../../types';
 import {
   ChevronLeft,
   Download,

@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActiveTab } from '../types';
+import { ActiveTab } from '../../types';
 import {
   Download,
   Filter,

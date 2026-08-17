@@ -1,5 +1,5 @@
 import React from 'react';
-import { AssessmentProtocol, ActiveTab } from '../types';
+import { AssessmentProtocol, ActiveTab } from '../../types';
 import { Smile, Brain, Target, Play } from 'lucide-react';
 
 interface AssessmentsViewProps {

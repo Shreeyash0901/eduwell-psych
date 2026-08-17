@@ -1,17 +1,17 @@
-import React, { useState } from 'react';
-import { Sidebar } from './components/Sidebar';
-import { Header } from './components/Header';
-import { DashboardView } from './components/DashboardView';
-import { ObservationsView } from './components/ObservationsView';
-import { ObservationDetailView } from './components/ObservationDetailView';
-import { AssessmentsView } from './components/AssessmentsView';
-import { AssessmentRunnerView } from './components/AssessmentRunnerView';
-import { AssessmentResultView } from './components/AssessmentResultView';
-import { ReportsView } from './components/ReportsView';
-import { StudentsView } from './components/StudentsView';
-import { SettingsView } from './components/SettingsView';
-import { NewObservationModal } from './components/NewObservationModal';
-import { NewAssessmentModal } from './components/NewAssessmentModal';
+import React, { useState, useEffect } from 'react';
+import { Sidebar } from './components/layout/Sidebar';
+import { Header } from './components/layout/Header';
+import { DashboardView } from './components/dashboard/DashboardView';
+import { ObservationsView } from './components/observations/ObservationsView';
+import { ObservationDetailView } from './components/observations/ObservationDetailView';
+import { AssessmentsView } from './components/assessments/AssessmentsView';
+import { AssessmentRunnerView } from './components/assessments/AssessmentRunnerView';
+import { AssessmentResultView } from './components/assessments/AssessmentResultView';
+import { ReportsView } from './components/reports/ReportsView';
+import { StudentsView } from './components/students/StudentsView';
+import { SettingsView } from './components/settings/SettingsView';
+import { NewObservationModal } from './components/observations/NewObservationModal';
+import { NewAssessmentModal } from './components/assessments/NewAssessmentModal';
 
 import {
   initialStudents,
@@ -27,8 +27,38 @@ import {
   AssessmentResult,
 } from './types';
 
+const getTabFromPath = (): ActiveTab => {
+  const path = window.location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
+  if (path === 'students') return 'students';
+  if (path === 'observations') return 'observations';
+  if (path === 'observation_detail' || path === 'observation-detail' || path === 'observation') return 'observation_detail';
+  if (path === 'assessments') return 'assessments';
+  if (path === 'assessment_runner' || path === 'assessment-runner' || path === 'assessment') return 'assessment_runner';
+  if (path === 'assessment_result' || path === 'assessment-result' || path === 'results') return 'assessment_result';
+  if (path === 'reports') return 'reports';
+  if (path === 'settings') return 'settings';
+  return 'dashboard';
+};
+
 export default function App() {
-  const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
+  const [activeTab, setActiveTabState] = useState<ActiveTab>(() => getTabFromPath());
+
+  const setActiveTab = (tab: ActiveTab) => {
+    setActiveTabState(tab);
+    const targetPath = tab === 'dashboard' ? '/' : `/${tab}`;
+    if (window.location.pathname !== targetPath) {
+      window.history.pushState(null, '', targetPath);
+    }
+  };
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setActiveTabState(getTabFromPath());
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Data State

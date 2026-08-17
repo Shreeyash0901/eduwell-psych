@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ActiveTab } from '../types';
+import { ActiveTab } from '../../types';
 import { Save, ShieldCheck, Sparkles, Sliders } from 'lucide-react';
 
 interface SettingsViewProps {

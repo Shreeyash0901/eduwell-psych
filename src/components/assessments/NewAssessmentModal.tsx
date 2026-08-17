@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Student, AssessmentProtocol } from '../types';
+import { Student, AssessmentProtocol } from '../../types';
 import { X, Play, ClipboardList } from 'lucide-react';
 
 interface NewAssessmentModalProps {

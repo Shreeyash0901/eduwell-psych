@@ -1,5 +1,5 @@
 import React from 'react';
-import { Student, ActiveTab } from '../types';
+import { Student, ActiveTab } from '../../types';
 import {
   Users,
   CheckCircle2,

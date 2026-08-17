@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ObservationRecord, ActiveTab } from '../types';
+import { ObservationRecord, ActiveTab } from '../../types';
 import {
   ChevronLeft,
   FileText,

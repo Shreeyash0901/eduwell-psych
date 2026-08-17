@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Student, ObservationRecord } from '../types';
+import { Student, ObservationRecord } from '../../types';
 import { X, Plus, FileText } from 'lucide-react';
 
 interface NewObservationModalProps {

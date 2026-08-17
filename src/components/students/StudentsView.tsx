@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Student, ActiveTab } from '../types';
+import { Student, ActiveTab } from '../../types';
 import {
   Search,
   Filter,
