@@ -1,0 +1,283 @@
+// ============================================================
+// EduWell Psych — Prisma Schema
+// Phase 1 — Step 3
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Prisma 7: URL is configured in prisma.config.ts, not here
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================
+// Enums
+// ============================================================
+
+enum UserRole {
+  ADMIN
+  PSYCHOLOGIST
+  TEACHER
+}
+
+enum WellnessStatus {
+  NORMAL
+  MONITOR
+  ATTENTION_REQUIRED
+}
+
+enum ObservationStatus {
+  NEW
+  PENDING_REVIEW
+  REVIEWED
+  ASSESSED
+}
+
+enum ObservationSource {
+  TEACHER
+  PARENT
+  COUNSELOR
+  PSYCHOLOGIST
+}
+
+enum AssessmentStatus {
+  DRAFT
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum ReportStatus {
+  DRAFT
+  FINALIZED
+}
+
+// ============================================================
+// School — Root Tenant Entity
+// ============================================================
+
+model School {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users    User[]
+  students Student[]
+  reports  Report[]
+}
+
+// ============================================================
+// User — Staff Member (No Auth Credentials Yet)
+// ============================================================
+
+model User {
+  id        String   @id @default(uuid())
+  schoolId  String
+  school    School   @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  name      String
+  email     String   @unique
+  role      UserRole @default(TEACHER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  observations Observation[] @relation("ObservationAuthor")
+  assessments  Assessment[]  @relation("AssessmentCreatedBy")
+  reports      Report[]      @relation("ReportCreatedBy")
+
+  @@index([schoolId])
+}
+
+// ============================================================
+// Student — Core Clinical Entity
+// ============================================================
+
+model Student {
+  id                String         @id @default(uuid())
+  schoolId          String
+  school            School         @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  studentCode       String // Human-readable: 'STU-4029' — unique per school
+  name              String
+  dateOfBirth       DateTime? // Nullable during seed — age cannot be auto-migrated from mock data
+  grade             String
+  classGroup        String
+  homeroom          String
+  iepStatus         String
+  wellnessStatus    WellnessStatus @default(NORMAL)
+  primaryDomainFlag String? // Optional display label (e.g., 'Emotional Regulation (Score: 2.1)')
+  avatarUrl         String?
+  archivedAt        DateTime? // Soft archive — null = active student
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  guardians    Guardian[]
+  observations Observation[]
+  assessments  Assessment[]
+  reports      Report[]
+
+  @@unique([schoolId, studentCode]) // Student codes are unique per school, not globally
+  @@index([schoolId])
+}
+
+// ============================================================
+// Guardian — Parent / Guardian Contact (No Auth Yet)
+// ============================================================
+
+model Guardian {
+  id           String   @id @default(uuid())
+  studentId    String
+  student      Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  name         String
+  relationship String
+  email        String?
+  phone        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// ============================================================
+// Observation — Behavioral / Emotional Incident Record
+// ============================================================
+
+model Observation {
+  id                 String            @id @default(uuid())
+  recordNumber       String            @unique // e.g., '#842' — globally unique
+  studentId          String
+  student            Student           @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  authorId           String? // Optional: null if submitted externally (parent/guardian)
+  author             User?             @relation("ObservationAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  submittedByName    String? // Free text attribution for external submissions
+  source             ObservationSource
+  concernCategory    String // Free text for Phase 1 — e.g., 'Social/Emotional', 'Behavioral'
+  status             ObservationStatus @default(NEW)
+  classGroupSnapshot String? // Historical snapshot of class at time of incident
+  observedAt         DateTime          @default(now())
+  incidentTime       String // Phase 1: free text — e.g., 'Oct 23, 2023 - 11:15 AM'
+  setting            String
+  narrative          String
+  triggers           String
+  interventions      String
+  psychologistNotes  String?
+  aiAnalysis         String? // Reserved for Phase 3 AI integration
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  @@index([studentId])
+}
+
+// ============================================================
+// AssessmentProtocol — Standardized Test Template
+// ============================================================
+
+model AssessmentProtocol {
+  id            String   @id @default(uuid())
+  title         String
+  description   String
+  domains       String[] // Array of domain label strings — e.g., ['Anxiety', 'Mood', 'Stress']
+  estimatedTime String // Display string — e.g., '15-20 mins'
+  // questionCount is DERIVED from _count.questions — not persisted
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  questions   AssessmentQuestion[]
+  assessments Assessment[]
+}
+
+// ============================================================
+// AssessmentQuestion — Individual Question in a Protocol
+// ============================================================
+
+model AssessmentQuestion {
+  id           String             @id @default(uuid())
+  protocolId   String
+  protocol     AssessmentProtocol @relation(fields: [protocolId], references: [id], onDelete: Cascade)
+  text         String
+  domain       String
+  order        Int // Explicit ordering — never rely on insertion order
+  questionType String             @default("LIKERT") // Future values: YES_NO, MULTIPLE_CHOICE, TEXT
+  config       Json? // Optional type-specific configuration (labels, scale, options)
+
+  responses AssessmentResponse[]
+}
+
+// ============================================================
+// Assessment — One Student's Live Assessment Session
+// ============================================================
+
+model Assessment {
+  id          String             @id @default(uuid())
+  studentId   String
+  student     Student            @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  protocolId  String
+  protocol    AssessmentProtocol @relation(fields: [protocolId], references: [id], onDelete: Restrict)
+  createdById String?
+  createdBy   User?              @relation("AssessmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  status      AssessmentStatus   @default(DRAFT)
+  startedAt   DateTime? // When the session was first opened
+  completedAt DateTime? // When the session was submitted
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  responses AssessmentResponse[]
+  result    AssessmentResult?
+
+  @@index([studentId])
+  @@index([protocolId])
+}
+
+// ============================================================
+// AssessmentResponse — One Recorded Answer per Question
+// ============================================================
+
+model AssessmentResponse {
+  id           String             @id @default(uuid())
+  assessmentId String
+  assessment   Assessment         @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  questionId   String
+  question     AssessmentQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  response     Json // Flexible: number (Likert), boolean, string, array
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  @@unique([assessmentId, questionId]) // One answer per question per session
+}
+
+// ============================================================
+// AssessmentResult — Computed Outcome of a Completed Session
+// ============================================================
+
+model AssessmentResult {
+  id            String     @id @default(uuid())
+  assessmentId  String     @unique // One result per assessment session
+  assessment    Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  overallScore  Float
+  status        String // e.g., 'Screening Result'
+  domainResults Json // [{ name, score, maxScore, status }] — historical snapshot
+  aiSummary     String? // Reserved for Phase 3
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+}
+
+// ============================================================
+// Report — Cohort or Student-Level Reports
+// ============================================================
+
+model Report {
+  id          String       @id @default(uuid())
+  schoolId    String
+  school      School       @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  studentId   String? // Null = cohort/school-level report
+  student     Student?     @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  createdById String?
+  createdBy   User?        @relation("ReportCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  status      ReportStatus @default(DRAFT)
+  title       String
+  content     Json? // Structured report body — may become rich text in later phases
+  finalizedAt DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([studentId])
+  @@index([schoolId])
+}
