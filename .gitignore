@@ -11,3 +11,5 @@ coverage/
 docker-compose.override.yml
 
 /src/generated/prisma
+.claude/
+.windsurf/

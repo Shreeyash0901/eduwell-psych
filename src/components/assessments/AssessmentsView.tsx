@@ -11,6 +11,7 @@ interface AssessmentsViewProps {
 export const AssessmentsView: React.FC<AssessmentsViewProps> = ({
   protocols,
   onStartProtocol,
+  setActiveTab,
 }) => {
   const getProtocolIcon = (id: string) => {
     switch (id) {
@@ -28,11 +29,21 @@ export const AssessmentsView: React.FC<AssessmentsViewProps> = ({
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-6">
       {/* Header Title Section */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Assessment Library</h1>
-        <p className="text-sm text-slate-500 font-medium mt-1 max-w-3xl">
-          Conduct structured student assessments and review results. Select an assessment protocol below to begin a new session.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Assessment Library</h1>
+          <p className="text-sm text-slate-500 font-medium mt-1 max-w-3xl">
+            Conduct structured student assessments and review results. Select an assessment protocol below to begin a new session.
+          </p>
+        </div>
+
+        <button
+          onClick={() => setActiveTab('psychologist_interpretation')}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 rounded-lg text-sm font-semibold shadow-2xs transition-colors shrink-0 cursor-pointer"
+        >
+          <Brain className="w-4 h-4 text-indigo-600" />
+          <span>Clinical Interpretation</span>
+        </button>
       </div>
 
       {/* Protocol Cards Grid */}

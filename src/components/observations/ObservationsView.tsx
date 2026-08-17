@@ -21,6 +21,7 @@ export const ObservationsView: React.FC<ObservationsViewProps> = ({
   observations,
   onSelectObservation,
   onOpenNewNote,
+  setActiveTab,
 }) => {
   const [sourceFilter, setSourceFilter] = useState<string>('All Sources');
   const [categoryFilter, setCategoryFilter] = useState<string>('All Categories');
@@ -97,6 +98,13 @@ export const ObservationsView: React.FC<ObservationsViewProps> = ({
 
         <div className="flex items-center gap-3">
           <button
+            onClick={() => setActiveTab('parent_feedback')}
+            className="inline-flex items-center gap-2 px-3.5 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-lg text-sm font-semibold hover:bg-indigo-100 shadow-2xs transition-colors"
+          >
+            <Eye className="w-4 h-4 text-indigo-600" />
+            Parent Form
+          </button>
+          <button
             onClick={() => alert("Exporting observations queue CSV...")}
             className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors"
           >
@@ -104,8 +112,8 @@ export const ObservationsView: React.FC<ObservationsViewProps> = ({
             Export
           </button>
           <button
-            onClick={onOpenNewNote}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-700 text-white rounded-lg text-sm font-semibold hover:bg-blue-800 shadow-sm transition-colors"
+            onClick={() => setActiveTab('teacher_add_concern')}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-700 text-white rounded-lg text-sm font-semibold hover:bg-blue-800 shadow-sm transition-colors cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             New Note

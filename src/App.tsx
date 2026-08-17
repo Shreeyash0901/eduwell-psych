@@ -2,14 +2,21 @@ import React, { useState, useEffect } from 'react';
 import { Sidebar } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
 import { DashboardView } from './components/dashboard/DashboardView';
+import { TeacherDashboardView } from './components/dashboard/TeacherDashboardView';
 import { ObservationsView } from './components/observations/ObservationsView';
 import { ObservationDetailView } from './components/observations/ObservationDetailView';
+import { TeacherAddConcernView } from './components/observations/TeacherAddConcernView';
 import { AssessmentsView } from './components/assessments/AssessmentsView';
 import { AssessmentRunnerView } from './components/assessments/AssessmentRunnerView';
 import { AssessmentResultView } from './components/assessments/AssessmentResultView';
 import { ReportsView } from './components/reports/ReportsView';
+import { StudentReportPreviewView } from './components/reports/StudentReportPreviewView';
 import { StudentsView } from './components/students/StudentsView';
+import { StudentProfileView } from './components/students/StudentProfileView';
 import { SettingsView } from './components/settings/SettingsView';
+import { ParentFeedbackView } from './components/parent-feedback/ParentFeedbackView';
+import { PsychologistInterpretationView } from './components/assessments/PsychologistInterpretationView';
+import { AssessmentSetupView } from './components/assessments/AssessmentSetupView';
 import { NewObservationModal } from './components/observations/NewObservationModal';
 import { NewAssessmentModal } from './components/assessments/NewAssessmentModal';
 
@@ -30,18 +37,37 @@ import {
 const getTabFromPath = (): ActiveTab => {
   const path = window.location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
   if (path === 'students') return 'students';
+  if (
+    path === 'student_profile' ||
+    path === 'student-profile' ||
+    path === 'student_profile_assessments' ||
+    path === 'student_profile_observations' ||
+    path === 'student-observations' ||
+    path === 'student_profile_reports' ||
+    path === 'student-reports' ||
+    path === 'profile'
+  )
+    return 'student_profile';
   if (path === 'observations') return 'observations';
+  if (path === 'teacher_dashboard' || path === 'teacher-dashboard' || path === 'teacher') return 'teacher_dashboard';
+  if (path === 'teacher_add_concern' || path === 'teacher-add-concern' || path === 'log-observation' || path === 'new-observation') return 'teacher_add_concern';
   if (path === 'observation_detail' || path === 'observation-detail' || path === 'observation') return 'observation_detail';
   if (path === 'assessments') return 'assessments';
+  if (path === 'assessment_setup' || path === 'assessment-setup' || path === 'setup') return 'assessment_setup';
   if (path === 'assessment_runner' || path === 'assessment-runner' || path === 'assessment') return 'assessment_runner';
   if (path === 'assessment_result' || path === 'assessment-result' || path === 'results') return 'assessment_result';
+  if (path === 'student_report_preview' || path === 'student-report-preview' || path === 'report-preview' || path === 'report_preview') return 'student_report_preview';
   if (path === 'reports') return 'reports';
   if (path === 'settings') return 'settings';
+  if (path === 'parent-feedback' || path === 'parent_feedback' || path === 'parent-form' || path === 'feedback' || path === 'parent') return 'parent_feedback';
+  if (path === 'psychologist_interpretation' || path === 'psychologist-interpretation' || path === 'interpretation') return 'psychologist_interpretation';
   return 'dashboard';
 };
 
 export default function App() {
   const [activeTab, setActiveTabState] = useState<ActiveTab>(() => getTabFromPath());
+  const [students, setStudents] = useState<Student[]>(initialStudents);
+  const [selectedProfileStudent, setSelectedProfileStudent] = useState<Student>(initialStudents[0]);
 
   const setActiveTab = (tab: ActiveTab) => {
     setActiveTabState(tab);
@@ -62,7 +88,6 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Data State
-  const [students] = useState<Student[]>(initialStudents);
   const [observations, setObservations] = useState<ObservationRecord[]>(initialObservations);
   const [protocols] = useState<AssessmentProtocol[]>(assessmentProtocols);
 
@@ -91,13 +116,13 @@ export default function App() {
   const handleStartAssessmentFromObs = (studentName: string) => {
     setActiveAssessmentStudent(studentName);
     setSelectedProtocol(protocols[0]);
-    setActiveTab('assessment_runner');
+    setActiveTab('assessment_setup');
   };
 
   const handleStartProtocol = (protocol: AssessmentProtocol) => {
     setSelectedProtocol(protocol);
-    setActiveAssessmentStudent('Alex Johnson');
-    setActiveTab('assessment_runner');
+    setActiveAssessmentStudent('Alex Santos');
+    setActiveTab('assessment_setup');
   };
 
   const handleStartAssessmentModal = (studentName: string, protocol: AssessmentProtocol) => {
@@ -206,9 +231,11 @@ export default function App() {
         <Header
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
+          activeTab={activeTab}
+          onSwitchRole={(tab) => setActiveTab(tab)}
           onOpenHelp={() =>
             alert(
-              'EduWell Psych Professional Suite Help:\n- Dashboard: Aggregate cohort overview\n- Observations: Review and triage teacher/parent reports\n- Assessments: Conduct structured standardized screenings\n- Reports: District and grade-level analytics'
+              'EduWell Psych Professional Suite Help:\n- Dashboard: Aggregate cohort overview\n- Teacher Dashboard: Daily student overview & rapid concern logging\n- Observations: Review and triage teacher/parent reports\n- Assessments: Conduct structured standardized screenings\n- Reports: District and grade-level analytics'
             )
           }
         />
@@ -219,6 +246,13 @@ export default function App() {
               students={students}
               onSelectStudent={handleSelectStudentFromRoster}
               onOpenNewAssessment={() => setIsNewAssessmentOpen(true)}
+              setActiveTab={setActiveTab}
+            />
+          )}
+
+          {activeTab === 'teacher_dashboard' && (
+            <TeacherDashboardView
+              onAddConcern={() => setActiveTab('teacher_add_concern')}
               setActiveTab={setActiveTab}
             />
           )}
@@ -243,10 +277,33 @@ export default function App() {
             />
           )}
 
+          {activeTab === 'teacher_add_concern' && (
+            <TeacherAddConcernView
+              students={students}
+              onSubmitObservation={handleAddObservation}
+              onCancel={() => setActiveTab('observations')}
+              setActiveTab={setActiveTab}
+            />
+          )}
+
           {activeTab === 'assessments' && (
             <AssessmentsView
               protocols={protocols}
               onStartProtocol={handleStartProtocol}
+              setActiveTab={setActiveTab}
+            />
+          )}
+
+          {activeTab === 'assessment_setup' && (
+            <AssessmentSetupView
+              students={students}
+              protocol={selectedProtocol}
+              onStartAssessment={(studentName, prot) => {
+                setActiveAssessmentStudent(studentName);
+                setSelectedProtocol(prot);
+                setActiveTab('assessment_runner');
+              }}
+              onCancel={() => setActiveTab('assessments')}
               setActiveTab={setActiveTab}
             />
           )}
@@ -272,11 +329,56 @@ export default function App() {
 
           {activeTab === 'reports' && <ReportsView setActiveTab={setActiveTab} />}
 
+          {activeTab === 'student_report_preview' && (
+            <StudentReportPreviewView
+              onBack={() => setActiveTab('student_profile')}
+              setActiveTab={setActiveTab}
+            />
+          )}
+
+          {activeTab === 'parent_feedback' && (
+            <ParentFeedbackView
+              students={students}
+              selectedStudentName={activeAssessmentStudent || 'Alex Johnson'}
+              onSubmitFeedback={handleAddObservation}
+              setActiveTab={setActiveTab}
+            />
+          )}
+
+          {activeTab === 'psychologist_interpretation' && (
+            <PsychologistInterpretationView
+              studentName={activeAssessmentStudent || 'Alex Mercer'}
+              recordNumber="#8472"
+              grade="10th Grade"
+              assessmentDate="Oct 24, 2023"
+              setActiveTab={setActiveTab}
+            />
+          )}
+
           {activeTab === 'students' && (
             <StudentsView
               students={students}
               onSelectStudent={handleSelectStudentFromRoster}
+              onOpenFullProfile={(s) => {
+                setSelectedProfileStudent(s);
+                setActiveTab('student_profile');
+              }}
               onOpenNewAssessment={() => setIsNewAssessmentOpen(true)}
+              setActiveTab={setActiveTab}
+            />
+          )}
+
+          {activeTab === 'student_profile' && (
+            <StudentProfileView
+              student={selectedProfileStudent}
+              observations={observations}
+              onOpenNewAssessment={() => {
+                setSelectedProtocol(protocols[0]);
+                setActiveAssessmentStudent(selectedProfileStudent.name);
+                setActiveTab('assessment_setup');
+              }}
+              onOpenNewObservation={() => setIsNewObservationOpen(true)}
+              onSelectAssessmentResult={() => setActiveTab('assessment_result')}
               setActiveTab={setActiveTab}
             />
           )}

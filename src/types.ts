@@ -1,13 +1,20 @@
 export type ActiveTab =
   | 'dashboard'
+  | 'teacher_dashboard'
   | 'students'
+  | 'student_profile'
   | 'observations'
   | 'observation_detail'
+  | 'teacher_add_concern'
   | 'assessments'
+  | 'assessment_setup'
   | 'assessment_runner'
   | 'assessment_result'
   | 'reports'
-  | 'settings';
+  | 'student_report_preview'
+  | 'settings'
+  | 'parent_feedback'
+  | 'psychologist_interpretation';
 
 export type WellnessStatus = 'Normal' | 'Monitor' | 'Attention Required';
 
@@ -42,7 +49,18 @@ export interface ObservationRecord {
   studentName: string;
   classGroup: string;
   source: 'Teacher' | 'Parent' | 'Counselor';
-  concernCategory: 'Social/Emotional' | 'Academic' | 'Behavioral' | 'Emotional Regulation';
+  concernCategory:
+    | 'Attention'
+    | 'Behaviour'
+    | 'Learning'
+    | 'Social'
+    | 'Emotional'
+    | 'Other'
+    | 'Social/Emotional'
+    | 'Academic'
+    | 'Behavioral'
+    | 'Emotional Regulation'
+    | string;
   date: string;
   incidentTime: string;
   setting: string;

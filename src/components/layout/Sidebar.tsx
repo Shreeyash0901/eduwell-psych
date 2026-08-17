@@ -9,7 +9,8 @@ import {
   Settings,
   HelpCircle,
   LogOut,
-  BrainCircuit
+  BrainCircuit,
+  MessageSquareHeart,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -27,6 +28,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'dashboard' as ActiveTab, label: 'Dashboard', icon: LayoutDashboard },
     { id: 'students' as ActiveTab, label: 'Students', icon: Users },
     { id: 'observations' as ActiveTab, label: 'Observations', icon: Eye, badge: observationCount },
+    { id: 'parent_feedback' as ActiveTab, label: 'Parent Form', icon: MessageSquareHeart },
     { id: 'assessments' as ActiveTab, label: 'Assessments', icon: ClipboardList },
     { id: 'reports' as ActiveTab, label: 'Reports', icon: BarChart3 },
     { id: 'settings' as ActiveTab, label: 'Settings', icon: Settings },

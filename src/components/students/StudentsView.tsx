@@ -14,6 +14,7 @@ import {
 interface StudentsViewProps {
   students: Student[];
   onSelectStudent: (s: Student) => void;
+  onOpenFullProfile?: (s: Student) => void;
   onOpenNewAssessment: () => void;
   setActiveTab: (tab: ActiveTab) => void;
 }
@@ -21,7 +22,9 @@ interface StudentsViewProps {
 export const StudentsView: React.FC<StudentsViewProps> = ({
   students,
   onSelectStudent,
+  onOpenFullProfile,
   onOpenNewAssessment,
+  setActiveTab,
 }) => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('All');
@@ -141,8 +144,14 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                   </td>
                   <td className="px-6 py-4 text-right">
                     <button
-                      onClick={() => setSelectedProfileModal(s)}
-                      className="inline-flex items-center gap-1 text-xs font-bold text-blue-700 hover:text-blue-900 hover:underline"
+                      onClick={() => {
+                        if (onOpenFullProfile) {
+                          onOpenFullProfile(s);
+                        } else {
+                          setSelectedProfileModal(s);
+                        }
+                      }}
+                      className="inline-flex items-center gap-1 text-xs font-bold text-blue-700 hover:text-blue-900 hover:underline cursor-pointer"
                     >
                       <span>View Profile</span>
                       <ChevronRight className="w-3.5 h-3.5" />
@@ -231,6 +240,15 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
             </div>
 
             <div className="flex justify-end gap-3 pt-2">
+              <button
+                onClick={() => {
+                  setSelectedProfileModal(null);
+                  setActiveTab('parent_feedback');
+                }}
+                className="px-4 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-lg text-xs font-bold hover:bg-indigo-100 transition-colors"
+              >
+                Open Parent Feedback Form
+              </button>
               <button
                 onClick={() => {
                   onSelectStudent(selectedProfileModal);

@@ -24,6 +24,7 @@ interface AssessmentResultViewProps {
 export const AssessmentResultView: React.FC<AssessmentResultViewProps> = ({
   result,
   onBack,
+  setActiveTab,
 }) => {
   const [aiSummary, setAiSummary] = useState<string>(result.aiSummary || '');
   const [isGeneratingAi, setIsGeneratingAi] = useState<boolean>(false);
@@ -81,7 +82,7 @@ export const AssessmentResultView: React.FC<AssessmentResultViewProps> = ({
         <div>
           <button
             onClick={onBack}
-            className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-blue-700 transition-colors mb-1"
+            className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-blue-700 transition-colors mb-1 cursor-pointer"
           >
             <ChevronLeft className="w-3.5 h-3.5" />
             Assessment Result
@@ -102,17 +103,17 @@ export const AssessmentResultView: React.FC<AssessmentResultViewProps> = ({
         <div className="flex items-center gap-3">
           <button
             onClick={() => alert("Exporting Assessment Result PDF...")}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
           >
             <Download className="w-4 h-4 text-slate-500" />
             Export Report
           </button>
           <button
-            onClick={() => alert("Notes modal: Enter psychological commentary for IEP record")}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-700 text-white rounded-lg text-sm font-semibold hover:bg-blue-800 shadow-sm transition-colors"
+            onClick={() => setActiveTab('psychologist_interpretation')}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-700 text-white rounded-lg text-sm font-semibold hover:bg-blue-800 shadow-sm transition-colors cursor-pointer"
           >
             <Plus className="w-4 h-4" />
-            Add Notes
+            Psychologist Interpretation
           </button>
         </div>
       </div>
