@@ -1,12 +1,15 @@
 import React from 'react';
-import { Search, Bell, HelpCircle } from 'lucide-react';
+import { UserSession, UserRole } from '../../types';
+import { Search, Bell, HelpCircle, LogOut, ChevronDown } from 'lucide-react';
 
 interface HeaderProps {
   searchQuery: string;
   setSearchQuery: (q: string) => void;
   onOpenHelp?: () => void;
   activeTab?: string;
-  onSwitchRole?: (tab: 'dashboard' | 'teacher_dashboard') => void;
+  user?: UserSession | null;
+  onSwitchRole?: (role: UserRole) => void;
+  onSignOut?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -14,9 +17,11 @@ export const Header: React.FC<HeaderProps> = ({
   setSearchQuery,
   onOpenHelp,
   activeTab,
+  user,
   onSwitchRole,
+  onSignOut,
 }) => {
-  const isTeacher = activeTab === 'teacher_dashboard' || activeTab === 'teacher_add_concern';
+  const currentRole = user?.role || 'psychologist';
 
   return (
     <header className="h-16 bg-white border-b border-slate-200 px-6 sm:px-8 flex items-center justify-between sticky top-0 z-10 shrink-0 gap-4">
@@ -36,26 +41,46 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="flex items-center gap-3">
         {/* Role Switcher Pill */}
         {onSwitchRole && (
-          <div className="hidden sm:flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-semibold">
+          <div className="hidden md:flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-semibold">
             <button
-              onClick={() => onSwitchRole('dashboard')}
-              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                !isTeacher
+              onClick={() => onSwitchRole('psychologist')}
+              className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                currentRole === 'psychologist'
                   ? 'bg-white text-blue-700 shadow-2xs font-bold'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              Psychologist View
+              Psychologist
             </button>
             <button
-              onClick={() => onSwitchRole('teacher_dashboard')}
-              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                isTeacher
+              onClick={() => onSwitchRole('teacher')}
+              className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                currentRole === 'teacher'
                   ? 'bg-white text-blue-700 shadow-2xs font-bold'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              Teacher View
+              Teacher
+            </button>
+            <button
+              onClick={() => onSwitchRole('parent')}
+              className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                currentRole === 'parent'
+                  ? 'bg-white text-blue-700 shadow-2xs font-bold'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Parent
+            </button>
+            <button
+              onClick={() => onSwitchRole('admin')}
+              className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                currentRole === 'admin'
+                  ? 'bg-white text-blue-700 shadow-2xs font-bold'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Admin
             </button>
           </div>
         )}
@@ -82,19 +107,32 @@ export const Header: React.FC<HeaderProps> = ({
         {/* User Profile */}
         <div className="flex items-center gap-3">
           <img
-            src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=120"
-            alt={isTeacher ? "Sarah Jenkins (Teacher)" : "Dr. Sarah Jenkins"}
+            src={
+              user?.avatarUrl ||
+              'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=120'
+            }
+            alt={user?.name || 'Dr. Sarah Jenkins'}
             className="w-8 h-8 rounded-full object-cover ring-2 ring-slate-100"
           />
           <div className="text-left hidden md:block">
             <p className="text-xs font-semibold text-slate-800 leading-tight">
-              {isTeacher ? "Sarah Jenkins" : "Dr. Sarah Jenkins"}
+              {user?.name || 'Dr. Sarah Jenkins'}
             </p>
             <p className="text-[11px] text-slate-500 font-medium">
-              {isTeacher ? "Primary Educator" : "Lead Psychologist"}
+              {user?.roleTitle || 'Lead Psychologist'}
             </p>
           </div>
         </div>
+
+        {onSignOut && (
+          <button
+            onClick={onSignOut}
+            className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+            title="Sign Out"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
+        )}
       </div>
     </header>
   );

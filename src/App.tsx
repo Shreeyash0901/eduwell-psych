@@ -17,6 +17,7 @@ import { SettingsView } from './components/settings/SettingsView';
 import { ParentFeedbackView } from './components/parent-feedback/ParentFeedbackView';
 import { PsychologistInterpretationView } from './components/assessments/PsychologistInterpretationView';
 import { AssessmentSetupView } from './components/assessments/AssessmentSetupView';
+import { LoginView } from './components/auth/LoginView';
 import { NewObservationModal } from './components/observations/NewObservationModal';
 import { NewAssessmentModal } from './components/assessments/NewAssessmentModal';
 
@@ -25,6 +26,7 @@ import {
   initialObservations,
   assessmentProtocols,
   sampleAssessmentResult,
+  demoUsers,
 } from './data/mockData';
 import {
   ActiveTab,
@@ -32,6 +34,8 @@ import {
   ObservationRecord,
   AssessmentProtocol,
   AssessmentResult,
+  UserSession,
+  UserRole,
 } from './types';
 
 const getTabFromPath = (): ActiveTab => {
@@ -48,6 +52,7 @@ const getTabFromPath = (): ActiveTab => {
 
   const path = hash || paramTab || lastSegment;
 
+  if (path === 'login' || path === 'auth' || path === 'signin') return 'login';
   if (path === 'students') return 'students';
   if (
     path === 'student_profile' ||
@@ -77,6 +82,16 @@ const getTabFromPath = (): ActiveTab => {
 };
 
 export default function App() {
+  const [currentUser, setCurrentUser] = useState<UserSession | null>(() => {
+    try {
+      const saved = localStorage.getItem('eduwell_user');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error(e);
+    }
+    return demoUsers[0]; // Default authenticated as Dr. Sarah Jenkins (Psychologist)
+  });
+
   const [activeTab, setActiveTabState] = useState<ActiveTab>(() => getTabFromPath());
   const [students, setStudents] = useState<Student[]>(initialStudents);
   const [selectedProfileStudent, setSelectedProfileStudent] = useState<Student>(initialStudents[0]);
@@ -88,6 +103,40 @@ export default function App() {
     } else {
       window.location.hash = `#${tab}`;
     }
+  };
+
+  const handleLogin = (user: UserSession) => {
+    setCurrentUser(user);
+    try {
+      localStorage.setItem('eduwell_user', JSON.stringify(user));
+    } catch (e) {
+      console.error(e);
+    }
+
+    if (user.role === 'teacher') {
+      setActiveTab('teacher_dashboard');
+    } else if (user.role === 'parent') {
+      setActiveTab('parent_feedback');
+    } else if (user.role === 'admin') {
+      setActiveTab('dashboard');
+    } else {
+      setActiveTab('dashboard');
+    }
+  };
+
+  const handleSignOut = () => {
+    setCurrentUser(null);
+    try {
+      localStorage.removeItem('eduwell_user');
+    } catch (e) {
+      console.error(e);
+    }
+    setActiveTab('login');
+  };
+
+  const handleSwitchRole = (role: UserRole) => {
+    const targetUser = demoUsers.find((u) => u.role === role) || demoUsers[0];
+    handleLogin(targetUser);
   };
 
   useEffect(() => {
@@ -234,6 +283,10 @@ export default function App() {
     setActiveTab('assessment_runner');
   };
 
+  if (!currentUser || activeTab === 'login') {
+    return <LoginView onLogin={handleLogin} />;
+  }
+
   return (
     <div className="min-h-screen bg-slate-100/60 font-sans text-slate-800 flex antialiased">
       {/* Left Sidebar Navigation */}
@@ -241,6 +294,8 @@ export default function App() {
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         observationCount={observations.filter((o) => o.status === 'Pending Review' || o.status === 'New').length}
+        user={currentUser}
+        onSignOut={handleSignOut}
       />
 
       {/* Main Content Workspace */}
@@ -249,7 +304,9 @@ export default function App() {
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
           activeTab={activeTab}
-          onSwitchRole={(tab) => setActiveTab(tab)}
+          user={currentUser}
+          onSwitchRole={handleSwitchRole}
+          onSignOut={handleSignOut}
           onOpenHelp={() =>
             alert(
               'EduWell Psych Professional Suite Help:\n- Dashboard: Aggregate cohort overview\n- Teacher Dashboard: Daily student overview & rapid concern logging\n- Observations: Review and triage teacher/parent reports\n- Assessments: Conduct structured standardized screenings\n- Reports: District and grade-level analytics'

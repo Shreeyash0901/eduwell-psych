@@ -1,4 +1,5 @@
 export type ActiveTab =
+  | 'login'
   | 'dashboard'
   | 'teacher_dashboard'
   | 'students'
@@ -15,6 +16,18 @@ export type ActiveTab =
   | 'settings'
   | 'parent_feedback'
   | 'psychologist_interpretation';
+
+export type UserRole = 'psychologist' | 'teacher' | 'parent' | 'admin';
+
+export interface UserSession {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  roleTitle: string;
+  avatarUrl: string;
+  schoolName: string;
+}
 
 export type WellnessStatus = 'Normal' | 'Monitor' | 'Attention Required';
 
