@@ -6,3 +6,8 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Docker local overrides (per-developer, not committed)
+docker-compose.override.yml
+
+/src/generated/prisma

@@ -4,7 +4,8 @@
 // ============================================================
 
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
 }
 
 // Prisma 7: URL is configured in prisma.config.ts, not here

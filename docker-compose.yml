@@ -1,0 +1,26 @@
+# EduWell Psych — Local Development Database
+# PostgreSQL 16 via Docker
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: eduwell_psych_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-eduwell_psych}
+      POSTGRES_USER: ${POSTGRES_USER:-eduwell}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword123}
+    ports:
+      - "5432:5432"
+    volumes:
+      - eduwell_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-eduwell} -d ${POSTGRES_DB:-eduwell_psych}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  eduwell_postgres_data:
+    name: eduwell_postgres_data
