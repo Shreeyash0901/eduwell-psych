@@ -35,7 +35,19 @@ import {
 } from './types';
 
 const getTabFromPath = (): ActiveTab => {
-  const path = window.location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
+  // Check hash first (e.g. #/teacher-add-concern or #teacher_add_concern)
+  const hash = window.location.hash.replace(/^#\/?/, '').toLowerCase().trim();
+  
+  // Check URL query parameters (e.g. ?tab=teacher_add_concern)
+  const urlParams = new URLSearchParams(window.location.search);
+  const paramTab = (urlParams.get('tab') || urlParams.get('view') || '').toLowerCase().trim();
+
+  // Check pathname, stripping any repo subpaths (e.g. /eduwell-psych/)
+  const segments = window.location.pathname.split('/').filter(Boolean);
+  const lastSegment = (segments[segments.length - 1] === 'eduwell-psych' ? '' : segments[segments.length - 1] || '').toLowerCase().trim();
+
+  const path = hash || paramTab || lastSegment;
+
   if (path === 'students') return 'students';
   if (
     path === 'student_profile' ||
@@ -71,9 +83,10 @@ export default function App() {
 
   const setActiveTab = (tab: ActiveTab) => {
     setActiveTabState(tab);
-    const targetPath = tab === 'dashboard' ? '/' : `/${tab}`;
-    if (window.location.pathname !== targetPath) {
-      window.history.pushState(null, '', targetPath);
+    if (tab === 'dashboard') {
+      window.history.pushState(null, '', window.location.pathname + window.location.search);
+    } else {
+      window.location.hash = `#${tab}`;
     }
   };
 
@@ -82,7 +95,11 @@ export default function App() {
       setActiveTabState(getTabFromPath());
     };
     window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
+    window.addEventListener('hashchange', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('hashchange', handlePopState);
+    };
   }, []);
 
   const [searchQuery, setSearchQuery] = useState<string>('');
