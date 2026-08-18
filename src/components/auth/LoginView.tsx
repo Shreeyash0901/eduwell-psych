@@ -298,18 +298,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
           </form>
         </div>
 
-        {/* Compliance & Security Badges Footer */}
-        <div className="flex flex-wrap items-center justify-center gap-4 text-slate-400 text-xs font-medium pt-2">
-          <div className="flex items-center gap-1.5">
-            <ShieldCheck className="w-4 h-4 text-emerald-600" />
-            <span>FERPA / HIPAA Compliant</span>
-          </div>
-          <span>•</span>
-          <div className="flex items-center gap-1.5">
-            <LockKeyhole className="w-4 h-4 text-blue-600" />
-            <span>256-bit Encrypted Session</span>
-          </div>
-        </div>
+
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 import React from 'react';
-import { UserSession, UserRole } from '../../types';
-import { Search, Bell, HelpCircle, LogOut, ChevronDown } from 'lucide-react';
+import { UserSession, UserRole, ActiveTab } from '../../types';
+import { Search, HelpCircle, LogOut } from 'lucide-react';
+import { NotificationDropdown } from './NotificationDropdown';
 
 interface HeaderProps {
   searchQuery: string;
@@ -10,6 +11,7 @@ interface HeaderProps {
   user?: UserSession | null;
   onSwitchRole?: (role: UserRole) => void;
   onSignOut?: () => void;
+  onNavigateTab?: (tab: ActiveTab) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -20,11 +22,12 @@ export const Header: React.FC<HeaderProps> = ({
   user,
   onSwitchRole,
   onSignOut,
+  onNavigateTab,
 }) => {
   const currentRole = user?.role || 'psychologist';
 
   return (
-    <header className="h-16 bg-white border-b border-slate-200 px-6 sm:px-8 flex items-center justify-between sticky top-0 z-10 shrink-0 gap-4">
+    <header className="h-16 bg-white border-b border-slate-200 px-6 sm:px-8 flex items-center justify-between sticky top-0 z-20 shrink-0 gap-4">
       {/* Search Input */}
       <div className="relative w-72 sm:w-96">
         <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -85,14 +88,8 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         )}
 
-        <button
-          onClick={() => alert("No unread alerts. All priority reviews are up to date.")}
-          className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors relative cursor-pointer"
-          title="Notifications"
-        >
-          <Bell className="w-5 h-5" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-blue-600 rounded-full ring-2 ring-white"></span>
-        </button>
+        {/* Notifications Dropdown */}
+        <NotificationDropdown onNavigateTab={(tab) => onNavigateTab && onNavigateTab(tab as ActiveTab)} />
 
         <button
           onClick={onOpenHelp}

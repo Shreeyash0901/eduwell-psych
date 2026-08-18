@@ -31,7 +31,8 @@ interface StudentProfileViewProps {
   student?: Student;
   observations?: ObservationRecord[];
   initialTab?: ProfileTab;
-  onOpenNewAssessment: () => void;
+  onOpenNewAssessment: (studentName?: string) => void;
+  onGenerateReport?: (studentName: string) => void;
   onOpenNewObservation?: () => void;
   onSelectAssessmentResult?: () => void;
   setActiveTab: (tab: ActiveTab) => void;
@@ -43,6 +44,7 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
   student,
   initialTab = 'overview',
   onOpenNewAssessment,
+  onGenerateReport,
   onOpenNewObservation,
   onSelectAssessmentResult,
   setActiveTab,
@@ -156,7 +158,13 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
         {/* Header Action Buttons */}
         <div className="flex items-center gap-3 self-start sm:self-auto">
           <button
-            onClick={() => setActiveTab('student_report_preview')}
+            onClick={() => {
+              if (onGenerateReport) {
+                onGenerateReport(currentStudent.name);
+              } else {
+                setActiveTab('student_report_preview');
+              }
+            }}
             className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs sm:text-sm font-semibold transition-colors shadow-2xs cursor-pointer"
           >
             <FileText className="w-4 h-4 text-slate-500" />
@@ -164,7 +172,7 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
           </button>
 
           <button
-            onClick={onOpenNewAssessment}
+            onClick={() => onOpenNewAssessment(currentStudent.name)}
             className="inline-flex items-center gap-2 px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-xs sm:text-sm font-semibold transition-colors shadow-xs cursor-pointer"
           >
             <Play className="w-3.5 h-3.5 fill-current" />
@@ -482,7 +490,7 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <h2 className="text-lg font-bold text-slate-900">Conducted Assessments</h2>
             <button
-              onClick={onOpenNewAssessment}
+              onClick={() => onOpenNewAssessment(currentStudent.name)}
               className="inline-flex items-center gap-2 px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-xs sm:text-sm font-semibold shadow-xs transition-colors cursor-pointer self-start sm:self-auto"
             >
               <Plus className="w-4 h-4" />

@@ -168,6 +168,11 @@ export default function App() {
   const [assessmentResult, setAssessmentResult] = useState<AssessmentResult>(
     sampleAssessmentResult
   );
+  const [psychologistReportData, setPsychologistReportData] = useState<{
+    studentName?: string;
+    clinicalInterpretation?: string;
+    recommendations?: string;
+  }>({});
 
   // Modal Open States
   const [isNewObservationOpen, setIsNewObservationOpen] = useState<boolean>(false);
@@ -277,6 +282,10 @@ export default function App() {
     setObservations((prev) => [newObs, ...prev]);
   };
 
+  const handleAddStudent = (newStudent: Student) => {
+    setStudents((prev) => [newStudent, ...prev]);
+  };
+
   const handleSelectStudentFromRoster = (student: Student) => {
     setActiveAssessmentStudent(student.name);
     setSelectedProtocol(protocols[0]);
@@ -307,6 +316,7 @@ export default function App() {
           user={currentUser}
           onSwitchRole={handleSwitchRole}
           onSignOut={handleSignOut}
+          onNavigateTab={setActiveTab}
           onOpenHelp={() =>
             alert(
               'EduWell Psych Professional Suite Help:\n- Dashboard: Aggregate cohort overview\n- Teacher Dashboard: Daily student overview & rapid concern logging\n- Observations: Review and triage teacher/parent reports\n- Assessments: Conduct structured standardized screenings\n- Reports: District and grade-level analytics'
@@ -372,6 +382,7 @@ export default function App() {
             <AssessmentSetupView
               students={students}
               protocol={selectedProtocol}
+              selectedStudentName={activeAssessmentStudent}
               onStartAssessment={(studentName, prot) => {
                 setActiveAssessmentStudent(studentName);
                 setSelectedProtocol(prot);
@@ -401,14 +412,44 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'reports' && <ReportsView setActiveTab={setActiveTab} />}
-
-          {activeTab === 'student_report_preview' && (
-            <StudentReportPreviewView
-              onBack={() => setActiveTab('student_profile')}
+          {activeTab === 'reports' && (
+            <ReportsView
+              students={students}
+              onSelectStudentReport={(s) => {
+                setActiveAssessmentStudent(s.name);
+                setSelectedProfileStudent(s);
+                setPsychologistReportData({});
+                setActiveTab('student_report_preview');
+              }}
               setActiveTab={setActiveTab}
             />
           )}
+
+          {activeTab === 'student_report_preview' && (() => {
+            const targetStudent =
+              students.find(
+                (s) =>
+                  s.name === psychologistReportData.studentName ||
+                  s.name === activeAssessmentStudent
+              ) ||
+              selectedProfileStudent ||
+              students[0];
+            return (
+              <StudentReportPreviewView
+                student={targetStudent}
+                students={students}
+                assessmentResult={assessmentResult}
+                psychologistNotes={psychologistReportData}
+                authorName={currentUser?.name}
+                onSelectStudent={(s) => {
+                  setActiveAssessmentStudent(s.name);
+                  setSelectedProfileStudent(s);
+                }}
+                onBack={() => setActiveTab('student_profile')}
+                setActiveTab={setActiveTab}
+              />
+            );
+          })()}
 
           {activeTab === 'parent_feedback' && (
             <ParentFeedbackView
@@ -419,25 +460,45 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'psychologist_interpretation' && (
-            <PsychologistInterpretationView
-              studentName={activeAssessmentStudent || 'Alex Mercer'}
-              recordNumber="#8472"
-              grade="10th Grade"
-              assessmentDate="Oct 24, 2023"
-              setActiveTab={setActiveTab}
-            />
-          )}
+          {activeTab === 'psychologist_interpretation' && (() => {
+            const activeStudent =
+              students.find((s) => s.name === activeAssessmentStudent) ||
+              selectedProfileStudent ||
+              students[0];
+            return (
+              <PsychologistInterpretationView
+                studentName={activeStudent.name}
+                recordNumber={activeStudent.studentId}
+                grade={activeStudent.grade}
+                assessmentDate={
+                  assessmentResult?.date ||
+                  new Date().toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                  })
+                }
+                student={activeStudent}
+                assessmentResult={assessmentResult}
+                onGenerateReport={(data) => {
+                  setPsychologistReportData(data);
+                  setActiveTab('student_report_preview');
+                }}
+                setActiveTab={setActiveTab}
+              />
+            );
+          })()}
 
           {activeTab === 'students' && (
             <StudentsView
               students={students}
+              userRole={currentUser?.role}
+              onAddStudent={handleAddStudent}
               onSelectStudent={handleSelectStudentFromRoster}
               onOpenFullProfile={(s) => {
                 setSelectedProfileStudent(s);
                 setActiveTab('student_profile');
               }}
-              onOpenNewAssessment={() => setIsNewAssessmentOpen(true)}
               setActiveTab={setActiveTab}
             />
           )}
@@ -446,10 +507,19 @@ export default function App() {
             <StudentProfileView
               student={selectedProfileStudent}
               observations={observations}
-              onOpenNewAssessment={() => {
+              onOpenNewAssessment={(studentName) => {
                 setSelectedProtocol(protocols[0]);
-                setActiveAssessmentStudent(selectedProfileStudent.name);
+                setActiveAssessmentStudent(
+                  studentName || selectedProfileStudent?.name || initialStudents[0].name
+                );
                 setActiveTab('assessment_setup');
+              }}
+              onGenerateReport={(studentName) => {
+                const target =
+                  students.find((s) => s.name === studentName) || selectedProfileStudent;
+                setActiveAssessmentStudent(target.name);
+                setPsychologistReportData({});
+                setActiveTab('student_report_preview');
               }}
               onOpenNewObservation={() => setIsNewObservationOpen(true)}
               onSelectAssessmentResult={() => setActiveTab('assessment_result')}

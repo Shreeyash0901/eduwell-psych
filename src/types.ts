@@ -31,15 +31,22 @@ export interface UserSession {
 
 export type WellnessStatus = 'Normal' | 'Monitor' | 'Attention Required';
 
+export type IepStatus = 'No IEP' | 'IEP Active' | '504 Plan Active' | 'Under Evaluation';
+
 export interface Student {
   id: string;
   studentId: string;
   name: string;
+  firstName?: string;
+  lastName?: string;
+  dateOfBirth?: string;
   grade: string;
   classGroup: string;
   age: number;
   homeroom: string;
-  iepStatus: string;
+  guardianName?: string;
+  guardianContact?: string;
+  iepStatus: IepStatus | string;
   priorObsCount: number;
   status: WellnessStatus;
   primaryDomainFlag?: string;

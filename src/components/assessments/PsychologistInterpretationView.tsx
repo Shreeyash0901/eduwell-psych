@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ActiveTab, Student } from '../../types';
+import { ActiveTab, Student, AssessmentResult } from '../../types';
 import {
   Save,
   FileText,
@@ -21,6 +21,13 @@ interface PsychologistInterpretationViewProps {
   recordNumber?: string;
   grade?: string;
   assessmentDate?: string;
+  student?: Student;
+  assessmentResult?: AssessmentResult;
+  onGenerateReport?: (reportData: {
+    studentName: string;
+    clinicalInterpretation: string;
+    recommendations: string;
+  }) => void;
   setActiveTab: (tab: ActiveTab) => void;
 }
 
@@ -29,6 +36,9 @@ export const PsychologistInterpretationView: React.FC<PsychologistInterpretation
   recordNumber = '#8472',
   grade = '10th Grade',
   assessmentDate = 'Oct 24, 2023',
+  student,
+  assessmentResult,
+  onGenerateReport,
   setActiveTab,
 }) => {
   const [clinicalInterpretation, setClinicalInterpretation] = useState('');
@@ -41,7 +51,15 @@ export const PsychologistInterpretationView: React.FC<PsychologistInterpretation
   };
 
   const handleGenerateReport = () => {
-    setActiveTab('reports');
+    if (onGenerateReport) {
+      onGenerateReport({
+        studentName,
+        clinicalInterpretation,
+        recommendations,
+      });
+    } else {
+      setActiveTab('student_report_preview');
+    }
   };
 
   // Helper text styling insertion
@@ -268,31 +286,57 @@ export const PsychologistInterpretationView: React.FC<PsychologistInterpretation
             </div>
 
             <div className="space-y-4">
-              {/* Highlight 1: Cognitive Load Index */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-semibold text-slate-700">Cognitive Load Index</span>
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-md font-bold text-[10px] bg-red-50 text-red-700 border border-red-200/60">
-                    Elevated
-                  </span>
-                </div>
-                <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                  <div className="bg-red-600 h-full rounded-full" style={{ width: '85%' }}></div>
-                </div>
-              </div>
-
-              {/* Highlight 2: Social Engagement */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-semibold text-slate-700">Social Engagement</span>
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-md font-bold text-[10px] bg-blue-50 text-blue-700 border border-blue-200/60">
-                    Average
-                  </span>
-                </div>
-                <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                  <div className="bg-blue-600 h-full rounded-full" style={{ width: '60%' }}></div>
-                </div>
-              </div>
+              {assessmentResult && assessmentResult.domains.length > 0 ? (
+                assessmentResult.domains.slice(0, 3).map((domain) => (
+                  <div key={domain.name} className="space-y-1.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-semibold text-slate-700">{domain.name}</span>
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded-md font-bold text-[10px] ${
+                          domain.status === 'CONCERN'
+                            ? 'bg-red-50 text-red-700 border border-red-200/60'
+                            : 'bg-blue-50 text-blue-700 border border-blue-200/60'
+                        }`}
+                      >
+                        {domain.status === 'CONCERN' ? 'Elevated Concern' : 'Optimal'}
+                      </span>
+                    </div>
+                    <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${
+                          domain.status === 'CONCERN' ? 'bg-red-600' : 'bg-blue-600'
+                        }`}
+                        style={{ width: `${Math.min(100, (domain.score / domain.maxScore) * 100)}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-semibold text-slate-700">Focus & Attention</span>
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-md font-bold text-[10px] bg-red-50 text-red-700 border border-red-200/60">
+                        Elevated
+                      </span>
+                    </div>
+                    <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                      <div className="bg-red-600 h-full rounded-full" style={{ width: '75%' }}></div>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-semibold text-slate-700">Emotional Regulation</span>
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-md font-bold text-[10px] bg-blue-50 text-blue-700 border border-blue-200/60">
+                        Stable
+                      </span>
+                    </div>
+                    <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                      <div className="bg-blue-600 h-full rounded-full" style={{ width: '65%' }}></div>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 

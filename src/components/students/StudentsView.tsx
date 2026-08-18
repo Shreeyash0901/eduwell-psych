@@ -1,21 +1,23 @@
 import React, { useState } from 'react';
-import { Student, ActiveTab } from '../../types';
+import { Student, ActiveTab, UserRole } from '../../types';
+import { AddStudentModal } from './AddStudentModal';
 import {
   Search,
   Filter,
-  Plus,
+  UserPlus,
   ChevronRight,
-  ClipboardList,
   Eye,
   AlertTriangle,
-  X
+  X,
+  CheckCircle2
 } from 'lucide-react';
 
 interface StudentsViewProps {
   students: Student[];
   onSelectStudent: (s: Student) => void;
   onOpenFullProfile?: (s: Student) => void;
-  onOpenNewAssessment: () => void;
+  onAddStudent?: (s: Student) => void;
+  userRole?: UserRole;
   setActiveTab: (tab: ActiveTab) => void;
 }
 
@@ -23,12 +25,33 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
   students,
   onSelectStudent,
   onOpenFullProfile,
-  onOpenNewAssessment,
+  onAddStudent,
+  userRole,
   setActiveTab,
 }) => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [selectedProfileModal, setSelectedProfileModal] = useState<Student | null>(null);
+  const [isAddStudentOpen, setIsAddStudentOpen] = useState(false);
+  const [successNotification, setSuccessNotification] = useState<{
+    title: string;
+    message: string;
+  } | null>(null);
+
+  const handleStudentAdded = (newStudent: Student) => {
+    if (onAddStudent) {
+      onAddStudent(newStudent);
+    }
+    setIsAddStudentOpen(false);
+    setSuccessNotification({
+      title: 'Student Successfully Enrolled',
+      message: `${newStudent.name} (${newStudent.studentId}) has been added to the directory roster.`,
+    });
+
+    setTimeout(() => {
+      setSuccessNotification(null);
+    }, 4500);
+  };
 
   const filtered = students.filter((s) => {
     if (statusFilter !== 'All' && s.status !== statusFilter) return false;
@@ -52,16 +75,42 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        {/* Action Button: Show + Add Student only when user is Admin */}
+        {userRole === 'admin' && (
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setIsAddStudentOpen(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-700 text-white rounded-lg text-sm font-semibold hover:bg-blue-800 shadow-sm transition-colors cursor-pointer"
+            >
+              <UserPlus className="w-4 h-4" />
+              <span>+ Add Student</span>
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Success Notification Banner */}
+      {successNotification && (
+        <div
+          role="status"
+          className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 flex items-center justify-between shadow-xs animate-in fade-in slide-in-from-top-2 duration-200"
+        >
+          <div className="flex items-center gap-2.5">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+            <div>
+              <p className="text-xs font-bold text-emerald-900">{successNotification.title}</p>
+              <p className="text-xs font-medium text-emerald-700">{successNotification.message}</p>
+            </div>
+          </div>
           <button
-            onClick={onOpenNewAssessment}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-700 text-white rounded-lg text-sm font-semibold hover:bg-blue-800 shadow-sm transition-colors"
+            onClick={() => setSuccessNotification(null)}
+            aria-label="Dismiss notification"
+            className="p-1 text-emerald-600 hover:text-emerald-800 hover:bg-emerald-100 rounded-md transition-colors cursor-pointer"
           >
-            <Plus className="w-4 h-4" />
-            New Assessment
+            <X className="w-4 h-4" />
           </button>
         </div>
-      </div>
+      )}
 
       {/* Controls Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white border border-slate-200/80 rounded-xl p-4 shadow-xs">
@@ -123,7 +172,21 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                   <td className="px-6 py-4 text-slate-700 font-medium">
                     {s.grade} ({s.classGroup})
                   </td>
-                  <td className="px-6 py-4 text-slate-600 font-medium">{s.iepStatus}</td>
+                  <td className="px-6 py-4">
+                    <span
+                      className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${
+                        s.iepStatus === 'IEP Active'
+                          ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                          : s.iepStatus === '504 Plan Active'
+                          ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                          : s.iepStatus === 'Under Evaluation'
+                          ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                          : 'bg-slate-50 text-slate-600 border border-slate-200'
+                      }`}
+                    >
+                      {s.iepStatus}
+                    </span>
+                  </td>
                   <td className="px-6 py-4 text-slate-800 font-bold">{s.priorObsCount}</td>
                   <td className="px-6 py-4">
                     {s.status === 'Attention Required' && (
@@ -164,6 +227,14 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
         </div>
       </div>
 
+      {/* Add Student Accessible Modal */}
+      {isAddStudentOpen && (
+        <AddStudentModal
+          onClose={() => setIsAddStudentOpen(false)}
+          onAddStudent={handleStudentAdded}
+        />
+      )}
+
       {/* Student Profile Quick Modal */}
       {selectedProfileModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
@@ -188,6 +259,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
 
               <button
                 onClick={() => setSelectedProfileModal(null)}
+                aria-label="Close modal"
                 className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"
               >
                 <X className="w-5 h-5" />
@@ -245,7 +317,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                   setSelectedProfileModal(null);
                   setActiveTab('parent_feedback');
                 }}
-                className="px-4 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-lg text-xs font-bold hover:bg-indigo-100 transition-colors"
+                className="px-4 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-lg text-xs font-bold hover:bg-indigo-100 transition-colors cursor-pointer"
               >
                 Open Parent Feedback Form
               </button>
@@ -254,7 +326,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                   onSelectStudent(selectedProfileModal);
                   setSelectedProfileModal(null);
                 }}
-                className="px-4 py-2 bg-blue-700 text-white rounded-lg text-xs font-bold hover:bg-blue-800 transition-colors"
+                className="px-4 py-2 bg-blue-700 text-white rounded-lg text-xs font-bold hover:bg-blue-800 transition-colors cursor-pointer"
               >
                 Open Full Assessment Dashboard
               </button>

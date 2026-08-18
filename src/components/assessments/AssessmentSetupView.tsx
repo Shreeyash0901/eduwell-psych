@@ -12,6 +12,7 @@ import {
 interface AssessmentSetupViewProps {
   students: Student[];
   protocol?: AssessmentProtocol;
+  selectedStudentName?: string;
   onStartAssessment: (studentName: string, protocol: AssessmentProtocol) => void;
   onCancel: () => void;
   setActiveTab: (tab: ActiveTab) => void;
@@ -20,13 +21,31 @@ interface AssessmentSetupViewProps {
 export const AssessmentSetupView: React.FC<AssessmentSetupViewProps> = ({
   students,
   protocol,
+  selectedStudentName,
   onStartAssessment,
   onCancel,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedStudent, setSelectedStudent] = useState<Student | null>(
-    students.find((s) => s.name === 'Alex Santos') || students[0] || null
-  );
+  const [selectedStudent, setSelectedStudent] = useState<Student | null>(() => {
+    if (selectedStudentName) {
+      const match = students.find(
+        (s) => s.name.toLowerCase() === selectedStudentName.toLowerCase()
+      );
+      if (match) return match;
+    }
+    return students[0] || null;
+  });
+
+  React.useEffect(() => {
+    if (selectedStudentName) {
+      const match = students.find(
+        (s) => s.name.toLowerCase() === selectedStudentName.toLowerCase()
+      );
+      if (match) {
+        setSelectedStudent(match);
+      }
+    }
+  }, [selectedStudentName, students]);
 
   const currentProtocol: AssessmentProtocol = protocol || {
     id: 'p0',

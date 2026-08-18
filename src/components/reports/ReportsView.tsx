@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ActiveTab } from '../../types';
+import { ActiveTab, Student } from '../../types';
 import {
   Plus,
   User,
@@ -12,15 +12,44 @@ import {
   BookOpen,
   CheckCircle2,
   AlertTriangle,
-  Info
+  Info,
+  Search,
+  X,
+  FileText,
+  ChevronRight
 } from 'lucide-react';
 
 interface ReportsViewProps {
+  students?: Student[];
+  onSelectStudentReport?: (student: Student) => void;
   setActiveTab: (tab: ActiveTab) => void;
 }
 
-export const ReportsView: React.FC<ReportsViewProps> = ({ setActiveTab }) => {
+export const ReportsView: React.FC<ReportsViewProps> = ({
+  students = [],
+  onSelectStudentReport,
+  setActiveTab,
+}) => {
   const [selectedSubView, setSelectedSubView] = useState<'dashboard' | 'grade_report'>('dashboard');
+  const [isStudentPickerOpen, setIsStudentPickerOpen] = useState(false);
+  const [studentSearch, setStudentSearch] = useState('');
+
+  const filteredStudents = students.filter(
+    (s) =>
+      s.name.toLowerCase().includes(studentSearch.toLowerCase()) ||
+      s.studentId.toLowerCase().includes(studentSearch.toLowerCase()) ||
+      s.grade.toLowerCase().includes(studentSearch.toLowerCase()) ||
+      s.homeroom.toLowerCase().includes(studentSearch.toLowerCase())
+  );
+
+  const handleOpenStudentReport = (student: Student) => {
+    setIsStudentPickerOpen(false);
+    if (onSelectStudentReport) {
+      onSelectStudentReport(student);
+    } else {
+      setActiveTab('student_report_preview');
+    }
+  };
 
   if (selectedSubView === 'grade_report') {
     return (
@@ -214,7 +243,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ setActiveTab }) => {
         </div>
 
         <button
-          onClick={() => setActiveTab('student_report_preview')}
+          onClick={() => setIsStudentPickerOpen(true)}
           className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-xs sm:text-sm font-semibold transition-colors shadow-xs cursor-pointer self-start sm:self-auto"
         >
           <Plus className="w-4 h-4" />
@@ -241,10 +270,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ setActiveTab }) => {
 
           <div className="mt-6 pt-4 border-t border-slate-100">
             <button
-              onClick={() => setActiveTab('student_report_preview')}
+              onClick={() => setIsStudentPickerOpen(true)}
               className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-700 hover:text-blue-900 transition-colors cursor-pointer group"
             >
-              <span>View Templates</span>
+              <span>Choose Student Report</span>
               <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
             </button>
           </div>
@@ -303,6 +332,94 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ setActiveTab }) => {
           </div>
         </div>
       </div>
+
+      {/* Student Selection Modal for Report Generation */}
+      {isStudentPickerOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full p-6 space-y-4 max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-blue-50 text-blue-700 rounded-xl">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-slate-900">Select Student for Report</h3>
+                  <p className="text-xs text-slate-500 font-medium">Choose a student to view or generate their confidential wellness report</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsStudentPickerOpen(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Search filter */}
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={studentSearch}
+                onChange={(e) => setStudentSearch(e.target.value)}
+                placeholder="Search by student name, ID, or grade..."
+                className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-600 focus:bg-white transition-all"
+                autoFocus
+              />
+            </div>
+
+            {/* Students List */}
+            <div className="overflow-y-auto divide-y divide-slate-100 flex-1 pr-1 max-h-80 space-y-1">
+              {filteredStudents.length > 0 ? (
+                filteredStudents.map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => handleOpenStudentReport(s)}
+                    className="w-full text-left p-3 rounded-xl hover:bg-blue-50/70 border border-transparent hover:border-blue-100 transition-all flex items-center justify-between group cursor-pointer"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 font-bold text-xs flex items-center justify-center shrink-0">
+                        {s.name.split(' ').map((n) => n[0]).join('')}
+                      </div>
+                      <div>
+                        <span className="font-bold text-sm text-slate-900 group-hover:text-blue-700 block">
+                          {s.name}
+                        </span>
+                        <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
+                          <span>{s.studentId}</span>
+                          <span>•</span>
+                          <span>{s.grade}</span>
+                          <span>•</span>
+                          <span>{s.homeroom}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                          s.status === 'Attention Required'
+                            ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                            : s.status === 'Monitor'
+                            ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                            : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                        }`}
+                      >
+                        {s.status}
+                      </span>
+                      <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-blue-700 group-hover:translate-x-0.5 transition-all" />
+                    </div>
+                  </button>
+                ))
+              ) : (
+                <div className="py-8 text-center text-xs text-slate-400 font-medium">
+                  No students match "{studentSearch}"
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
