@@ -21,6 +21,8 @@ import { LoginView } from './components/auth/LoginView';
 import { NewObservationModal } from './components/observations/NewObservationModal';
 import { NewAssessmentModal } from './components/assessments/NewAssessmentModal';
 import { Toaster } from 'sonner';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { Brain } from 'lucide-react';
 
 import {
   initialStudents,
@@ -35,7 +37,6 @@ import {
   ObservationRecord,
   AssessmentProtocol,
   AssessmentResult,
-  UserSession,
   UserRole,
 } from './types';
 
@@ -82,16 +83,8 @@ const getTabFromPath = (): ActiveTab => {
   return 'dashboard';
 };
 
-export default function App() {
-  const [currentUser, setCurrentUser] = useState<UserSession | null>(() => {
-    try {
-      const saved = localStorage.getItem('eduwell_user');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error(e);
-    }
-    return demoUsers[0]; // Default authenticated as Dr. Sarah Jenkins (Psychologist)
-  });
+function MainApplication() {
+  const { user: currentUser, isLoading: isAuthLoading, logout, login } = useAuth();
 
   const [activeTab, setActiveTabState] = useState<ActiveTab>(() => getTabFromPath());
   const [students, setStudents] = useState<Student[]>(initialStudents);
@@ -106,38 +99,23 @@ export default function App() {
     }
   };
 
-  const handleLogin = (user: UserSession) => {
-    setCurrentUser(user);
-    try {
-      localStorage.setItem('eduwell_user', JSON.stringify(user));
-    } catch (e) {
-      console.error(e);
+  useEffect(() => {
+    if (currentUser) {
+      if (activeTab === 'login') {
+        if (currentUser.role === 'teacher') {
+          setActiveTab('teacher_dashboard');
+        } else if (currentUser.role === 'parent') {
+          setActiveTab('parent_feedback');
+        } else {
+          setActiveTab('dashboard');
+        }
+      }
     }
+  }, [currentUser]);
 
-    if (user.role === 'teacher') {
-      setActiveTab('teacher_dashboard');
-    } else if (user.role === 'parent') {
-      setActiveTab('parent_feedback');
-    } else if (user.role === 'admin') {
-      setActiveTab('dashboard');
-    } else {
-      setActiveTab('dashboard');
-    }
-  };
-
-  const handleSignOut = () => {
-    setCurrentUser(null);
-    try {
-      localStorage.removeItem('eduwell_user');
-    } catch (e) {
-      console.error(e);
-    }
+  const handleSignOut = async () => {
+    await logout();
     setActiveTab('login');
-  };
-
-  const handleSwitchRole = (role: UserRole) => {
-    const targetUser = demoUsers.find((u) => u.role === role) || demoUsers[0];
-    handleLogin(targetUser);
   };
 
   useEffect(() => {
@@ -207,7 +185,6 @@ export default function App() {
     studentName: string,
     answers: Record<number, number>
   ) => {
-    // Calculate simple dynamic scores based on answers
     const values = Object.values(answers);
     const meanVal = values.length
       ? values.reduce((a, b) => a + b, 0) / values.length
@@ -293,8 +270,28 @@ export default function App() {
     setActiveTab('assessment_runner');
   };
 
+  // Auth Loading Splash Screen
+  if (isAuthLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center font-sans">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-14 h-14 rounded-2xl bg-blue-700 text-white shadow-lg shadow-blue-700/20 flex items-center justify-center animate-pulse">
+            <Brain className="w-8 h-8" />
+          </div>
+          <div className="flex items-center gap-2 text-sm font-semibold text-slate-600">
+            <div className="w-2 h-2 rounded-full bg-blue-600 animate-bounce" />
+            <div className="w-2 h-2 rounded-full bg-blue-600 animate-bounce [animation-delay:0.2s]" />
+            <div className="w-2 h-2 rounded-full bg-blue-600 animate-bounce [animation-delay:0.4s]" />
+            <span>Restoring secure session...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Unauthenticated or Login view
   if (!currentUser || activeTab === 'login') {
-    return <LoginView onLogin={handleLogin} />;
+    return <LoginView />;
   }
 
   return (
@@ -316,7 +313,6 @@ export default function App() {
           setSearchQuery={setSearchQuery}
           activeTab={activeTab}
           user={currentUser}
-          onSwitchRole={handleSwitchRole}
           onSignOut={handleSignOut}
           onNavigateTab={setActiveTab}
           onOpenHelp={() =>
@@ -551,5 +547,13 @@ export default function App() {
         />
       )}
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <MainApplication />
+    </AuthProvider>
   );
 }

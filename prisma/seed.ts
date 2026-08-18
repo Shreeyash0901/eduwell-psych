@@ -6,6 +6,7 @@
 import "dotenv/config";
 import { PrismaClient, Prisma } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+import bcrypt from "bcryptjs";
 
 const adapter = new PrismaPg({ connectionString: process.env["DATABASE_URL"]! });
 const prisma = new PrismaClient({ adapter });
@@ -156,14 +157,17 @@ async function main() {
   console.log(`  ✅ 4. Classes & Sections: Grade 8 (8A, 8B), Grade 4 (4A)`);
 
   // ── 5. Users (Staff / Roles) ───────────────────────────────
+  // Generate a valid bcrypt hash for "password123" with 10 salt rounds
+  const defaultPasswordHash = bcrypt.hashSync("password123", 10);
+
   const adminUser = await prisma.user.upsert({
     where: { email: "admin@westside.edu" },
-    update: { name: "Dr. Sarah Chen", role: "ADMIN", status: "ACTIVE" },
+    update: { name: "Dr. Sarah Chen", role: "ADMIN", status: "ACTIVE", passwordHash: defaultPasswordHash },
     create: {
       schoolId: school.id,
       name: "Dr. Sarah Chen",
       email: "admin@westside.edu",
-      passwordHash: "$2b$10$e8wU/syntheticHashForAdminUser123456",
+      passwordHash: defaultPasswordHash,
       role: "ADMIN",
       status: "ACTIVE",
     },
@@ -171,12 +175,12 @@ async function main() {
 
   const psychUser = await prisma.user.upsert({
     where: { email: "psych@westside.edu" },
-    update: { name: "Dr. James Okafor", role: "PSYCHOLOGIST", status: "ACTIVE" },
+    update: { name: "Dr. James Okafor", role: "PSYCHOLOGIST", status: "ACTIVE", passwordHash: defaultPasswordHash },
     create: {
       schoolId: school.id,
       name: "Dr. James Okafor",
       email: "psych@westside.edu",
-      passwordHash: "$2b$10$e8wU/syntheticHashForPsychUser123456",
+      passwordHash: defaultPasswordHash,
       role: "PSYCHOLOGIST",
       status: "ACTIVE",
     },
@@ -184,17 +188,64 @@ async function main() {
 
   const teacherUser = await prisma.user.upsert({
     where: { email: "teacher@westside.edu" },
-    update: { name: "Ms. Laura Bennett", role: "TEACHER", status: "ACTIVE" },
+    update: { name: "Ms. Laura Bennett", role: "TEACHER", status: "ACTIVE", passwordHash: defaultPasswordHash },
     create: {
       schoolId: school.id,
       name: "Ms. Laura Bennett",
       email: "teacher@westside.edu",
-      passwordHash: "$2b$10$e8wU/syntheticHashForTeacherUser123456",
+      passwordHash: defaultPasswordHash,
       role: "TEACHER",
       status: "ACTIVE",
     },
   });
-  console.log(`  ✅ 5. Users: Admin (${adminUser.name}), Psych (${psychUser.name}), Teacher (${teacherUser.name})`);
+
+  // Demo accounts aligned with frontend UI presets
+  await prisma.user.upsert({
+    where: { email: "dr.jenkins@eduwell.org" },
+    update: { name: "Dr. Sarah Jenkins", role: "PSYCHOLOGIST", status: "ACTIVE", passwordHash: defaultPasswordHash },
+    create: {
+      schoolId: school.id,
+      name: "Dr. Sarah Jenkins",
+      email: "dr.jenkins@eduwell.org",
+      passwordHash: defaultPasswordHash,
+      role: "PSYCHOLOGIST",
+      status: "ACTIVE",
+    },
+  });
+
+  await prisma.user.upsert({
+    where: { email: "sarah.teacher@eduwell.org" },
+    update: { name: "Sarah Jenkins (Educator)", role: "TEACHER", status: "ACTIVE", passwordHash: defaultPasswordHash },
+    create: {
+      schoolId: school.id,
+      name: "Sarah Jenkins (Educator)",
+      email: "sarah.teacher@eduwell.org",
+      passwordHash: defaultPasswordHash,
+      role: "TEACHER",
+      status: "ACTIVE",
+    },
+  });
+
+  await prisma.user.upsert({
+    where: { email: "admin@eduwell.org" },
+    update: { name: "Principal Robert Mercer", role: "ADMIN", status: "ACTIVE", passwordHash: defaultPasswordHash },
+    create: {
+      schoolId: school.id,
+      name: "Principal Robert Mercer",
+      email: "admin@eduwell.org",
+      passwordHash: defaultPasswordHash,
+      role: "ADMIN",
+      status: "ACTIVE",
+    },
+  });
+
+  // If a legacy parent user exists from previous seeds, clean it up
+  await prisma.user.deleteMany({
+    where: { email: "parent.johnson@eduwell.org" },
+  });
+
+  console.log(`  ✅ 5. Users: Admin, Psych, Teacher & Demo Staff Accounts (Password: password123)`);
+
 
   // ── 6. Students (3 Synthetic Records) ──────────────────────
   const student1 = await prisma.student.upsert({

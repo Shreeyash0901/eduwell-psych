@@ -2,103 +2,69 @@ import React, { useState } from 'react';
 import { toast } from 'sonner';
 import { UserSession, UserRole } from '../../types';
 import { demoUsers } from '../../data/mockData';
+import { useAuth } from '../../context/AuthContext';
 import {
   Mail,
   Lock,
   Eye,
   EyeOff,
   ArrowRight,
-  ShieldCheck,
   Brain,
   GraduationCap,
   Users,
   ShieldAlert,
   CheckCircle2,
-  LockKeyhole
 } from 'lucide-react';
 
 interface LoginViewProps {
-  onLogin: (user: UserSession) => void;
+  onLogin?: (user: UserSession) => void;
 }
 
 export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
+  const { login, isLoading, error: authError, clearError } = useAuth();
+
   const [email, setEmail] = useState('dr.jenkins@eduwell.org');
-  const [password, setPassword] = useState('••••••••••••');
+  const [password, setPassword] = useState('password123');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [selectedPresetId, setSelectedPresetId] = useState<string>('u-psych');
-  const [isLoading, setIsLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
+  const [localError, setLocalError] = useState('');
 
   const handleSelectPreset = (preset: UserSession) => {
     setSelectedPresetId(preset.id);
     setEmail(preset.email);
     setPassword('password123');
-    setErrorMessage('');
+    setLocalError('');
+    clearError();
   };
 
-  const handleFormSubmit = (e: React.FormEvent) => {
+  const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErrorMessage('');
+    setLocalError('');
+    clearError();
 
-    if (!email.trim()) {
-      setErrorMessage('Please enter an email address.');
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
+      setLocalError('Please enter an email address.');
       toast.error('Please enter an email address.');
       return;
     }
 
-    setIsLoading(true);
+    if (!password) {
+      setLocalError('Please enter a password.');
+      toast.error('Please enter a password.');
+      return;
+    }
 
-    setTimeout(() => {
-      // Find matching preset or create mock user session
-      const matched = demoUsers.find(
-        (u) => u.email.toLowerCase() === email.trim().toLowerCase()
-      );
+    const success = await login(trimmedEmail, password);
 
-      if (matched) {
-        toast.success('Signed in successfully!');
-        onLogin(matched);
-      } else {
-        // Fallback: deduce role from email or default to psychologist
-        let role: UserRole = 'psychologist';
-        let roleTitle = 'School Psychologist';
-        if (email.includes('teacher') || email.includes('educator')) {
-          role = 'teacher';
-          roleTitle = 'Classroom Educator';
-        } else if (email.includes('parent')) {
-          role = 'parent';
-          roleTitle = 'Parent / Guardian';
-        } else if (email.includes('admin')) {
-          role = 'admin';
-          roleTitle = 'District Administrator';
-        }
-
-        const customUser: UserSession = {
-          id: `u-${Date.now()}`,
-          name: email.split('@')[0].replace('.', ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
-          email: email.trim(),
-          role,
-          roleTitle,
-          avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=120',
-          schoolName: 'Lincoln High School (District 4)',
-        };
-        toast.success('Signed in successfully!');
-        onLogin(customUser);
+    if (success) {
+      toast.success('Signed in successfully!');
+      if (onLogin) {
+        // Will be picked up by AuthContext state
       }
-      setIsLoading(false);
-    }, 450);
-  };
-
-  const getRoleIcon = (role: UserRole) => {
-    switch (role) {
-      case 'psychologist':
-        return <Brain className="w-4 h-4 text-blue-600" />;
-      case 'teacher':
-        return <GraduationCap className="w-4 h-4 text-emerald-600" />;
-      case 'parent':
-        return <Users className="w-4 h-4 text-amber-600" />;
-      case 'admin':
-        return <ShieldAlert className="w-4 h-4 text-purple-600" />;
+    } else {
+      toast.error(authError || 'Invalid email or password.');
     }
   };
 
@@ -114,6 +80,8 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
         return 'bg-purple-50 text-purple-700 border-purple-200';
     }
   };
+
+  const displayedError = localError || authError;
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative overflow-hidden font-sans">
@@ -138,10 +106,10 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
 
         {/* Login Card */}
         <div className="bg-white py-8 px-6 sm:px-10 shadow-xl shadow-slate-200/50 rounded-3xl border border-slate-200/80 space-y-6">
-          {errorMessage && (
-            <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold flex items-center gap-2">
+          {displayedError && (
+            <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold flex items-center gap-2 animate-in fade-in duration-150">
               <ShieldAlert className="w-4 h-4 shrink-0" />
-              <span>{errorMessage}</span>
+              <span>{displayedError}</span>
             </div>
           )}
 
@@ -156,8 +124,10 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
               </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              {demoUsers.map((preset) => {
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              {demoUsers
+                .filter((preset) => preset.role === 'psychologist' || preset.role === 'teacher' || preset.role === 'admin')
+                .map((preset) => {
                 const isSelected = selectedPresetId === preset.id;
                 return (
                   <button
@@ -222,7 +192,13 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
                   type="email"
                   required
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (displayedError) {
+                      setLocalError('');
+                      clearError();
+                    }
+                  }}
                   placeholder="name@eduwell.org"
                   className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-600 focus:bg-white transition-all font-medium"
                 />
@@ -240,10 +216,13 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
                 </label>
                 <button
                   type="button"
-                  onClick={() => alert('Demo password is: password123')}
+                  onClick={() => {
+                    setPassword('password123');
+                    toast.info('Demo password set: password123');
+                  }}
                   className="text-[11px] font-semibold text-blue-700 hover:underline cursor-pointer"
                 >
-                  Forgot password?
+                  Demo password: password123
                 </button>
               </div>
               <div className="relative">
@@ -253,7 +232,13 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
                   type={showPassword ? 'text' : 'password'}
                   required
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    if (displayedError) {
+                      setLocalError('');
+                      clearError();
+                    }
+                  }}
                   placeholder="••••••••"
                   className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-600 focus:bg-white transition-all font-medium"
                 />
@@ -301,8 +286,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
             </button>
           </form>
         </div>
-
-
       </div>
     </div>
   );

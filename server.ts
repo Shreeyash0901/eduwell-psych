@@ -4,6 +4,10 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
+import helmet from "helmet";
+import cookieParser from "cookie-parser";
+import { authRouter } from "./src/server/auth";
+import { serverConfig } from "./src/server/env";
 
 dotenv.config();
 
@@ -18,9 +22,24 @@ if (import.meta.url) {
 
 const app = express();
 const server = http.createServer(app);
-const PORT = 3000;
+const PORT = serverConfig.port || 3000;
 
+// Security Headers with Helmet
+app.use(
+  helmet({
+    contentSecurityPolicy: false, // Disabled to allow Vite HMR and dynamic script loading in SPA development
+    crossOriginEmbedderPolicy: false,
+  })
+);
+
+// Cookie Parser for HttpOnly Auth Token handling
+app.use(cookieParser());
+
+// JSON Body Parser
 app.use(express.json());
+
+// Mount Authentication Router
+app.use("/api/auth", authRouter);
 
 // Initialize Gemini API client on server
 const getGeminiClient = () => {
