@@ -1,214 +1,713 @@
 // prisma/seed.ts
-// EduWell Psych — Development Seed Data
+// EduWell Psych — Development Seed Data (Manager V1 Specification)
 // Synthetic demo data only. No real student information.
-// Safe to re-run: uses upsert with stable identifiers.
+// Safe to re-run: repeatable execution using unique keys and idempotent upserts.
 
 import "dotenv/config";
-import { PrismaClient, UserRole, WellnessStatus, ObservationStatus, ObservationSource } from "../src/generated/prisma/client";
+import { PrismaClient, Prisma } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
+const adapter = new PrismaPg({ connectionString: process.env["DATABASE_URL"]! });
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
-  console.log("🌱 Starting seed...");
+  console.log("🌱 Starting repeatable Manager V1 database seed...");
 
-  // ── 1. School ──────────────────────────────────────────────
+  // ── 1. School (Root Tenant) ────────────────────────────────
   const school = await prisma.school.upsert({
-    where: { id: "seed-school-westside" },
-    update: {},
+    where: { code: "WESTSIDE" },
+    update: { name: "Westside Academy", status: "ACTIVE" },
     create: {
-      id: "seed-school-westside",
       name: "Westside Academy",
+      code: "WESTSIDE",
+      status: "ACTIVE",
     },
   });
-  console.log(`  ✅ School: ${school.name}`);
+  console.log(`  ✅ 1. School: [${school.id}] ${school.name} (${school.code})`);
 
-  // ── 2. Users (Staff) ───────────────────────────────────────
+  // ── 2. School API Configuration ────────────────────────────
+  const existingConfig = await prisma.schoolApiConfig.findFirst({
+    where: { schoolId: school.id, schoolCode: "WESTSIDE_API" },
+  });
+  const apiConfig = existingConfig
+    ? await prisma.schoolApiConfig.update({
+        where: { id: existingConfig.id },
+        data: {
+          baseUrl: "http://dmwerp.com/rest_school_assist/",
+          appVersion: "1.1",
+          appOs: "web",
+          isEnabled: true,
+          lastTestedAt: new Date(),
+          lastSyncAt: new Date(),
+        },
+      })
+    : await prisma.schoolApiConfig.create({
+        data: {
+          schoolId: school.id,
+          baseUrl: "http://dmwerp.com/rest_school_assist/",
+          schoolCode: "WESTSIDE_API",
+          appVersion: "1.1",
+          appOs: "web",
+          isEnabled: true,
+          lastTestedAt: new Date(),
+          lastSyncAt: new Date(),
+        },
+      });
+  console.log(`  ✅ 2. School API Config: ${apiConfig.baseUrl}`);
+
+  // ── 3. Academic Sessions ───────────────────────────────────
+  const existingSession = await prisma.academicSession.findFirst({
+    where: { schoolId: school.id, name: "2024-2025 Academic Year" },
+  });
+  const academicSession = existingSession
+    ? await prisma.academicSession.update({
+        where: { id: existingSession.id },
+        data: {
+          externalSessionId: "EXT-SESS-2024",
+          startDate: new Date("2024-08-01"),
+          endDate: new Date("2025-06-30"),
+          isCurrent: true,
+        },
+      })
+    : await prisma.academicSession.create({
+        data: {
+          schoolId: school.id,
+          externalSessionId: "EXT-SESS-2024",
+          name: "2024-2025 Academic Year",
+          startDate: new Date("2024-08-01"),
+          endDate: new Date("2025-06-30"),
+          isCurrent: true,
+        },
+      });
+  console.log(`  ✅ 3. Academic Session: ${academicSession.name}`);
+
+  // ── 4. Classes & Sections ──────────────────────────────────
+  let class8 = await prisma.class.findFirst({
+    where: { schoolId: school.id, name: "Grade 8" },
+  });
+  if (!class8) {
+    class8 = await prisma.class.create({
+      data: {
+        schoolId: school.id,
+        externalClassId: "EXT-CLS-8",
+        name: "Grade 8",
+        displayOrder: 8,
+        isActive: true,
+      },
+    });
+  }
+
+  let class4 = await prisma.class.findFirst({
+    where: { schoolId: school.id, name: "Grade 4" },
+  });
+  if (!class4) {
+    class4 = await prisma.class.create({
+      data: {
+        schoolId: school.id,
+        externalClassId: "EXT-CLS-4",
+        name: "Grade 4",
+        displayOrder: 4,
+        isActive: true,
+      },
+    });
+  }
+
+  let section8A = await prisma.section.findFirst({
+    where: { classId: class8.id, name: "Section 8A" },
+  });
+  if (!section8A) {
+    section8A = await prisma.section.create({
+      data: {
+        classId: class8.id,
+        externalSectionId: "EXT-SEC-8A",
+        name: "Section 8A",
+        isActive: true,
+      },
+    });
+  }
+
+  let section8B = await prisma.section.findFirst({
+    where: { classId: class8.id, name: "Section 8B" },
+  });
+  if (!section8B) {
+    section8B = await prisma.section.create({
+      data: {
+        classId: class8.id,
+        externalSectionId: "EXT-SEC-8B",
+        name: "Section 8B",
+        isActive: true,
+      },
+    });
+  }
+
+  let section4A = await prisma.section.findFirst({
+    where: { classId: class4.id, name: "Section 4A" },
+  });
+  if (!section4A) {
+    section4A = await prisma.section.create({
+      data: {
+        classId: class4.id,
+        externalSectionId: "EXT-SEC-4A",
+        name: "Section 4A",
+        isActive: true,
+      },
+    });
+  }
+  console.log(`  ✅ 4. Classes & Sections: Grade 8 (8A, 8B), Grade 4 (4A)`);
+
+  // ── 5. Users (Staff / Roles) ───────────────────────────────
   const adminUser = await prisma.user.upsert({
     where: { email: "admin@westside.edu" },
-    update: {},
+    update: { name: "Dr. Sarah Chen", role: "ADMIN", status: "ACTIVE" },
     create: {
-      id: "seed-user-admin",
       schoolId: school.id,
       name: "Dr. Sarah Chen",
       email: "admin@westside.edu",
-      role: UserRole.ADMIN,
+      passwordHash: "$2b$10$e8wU/syntheticHashForAdminUser123456",
+      role: "ADMIN",
+      status: "ACTIVE",
     },
   });
 
   const psychUser = await prisma.user.upsert({
     where: { email: "psych@westside.edu" },
-    update: {},
+    update: { name: "Dr. James Okafor", role: "PSYCHOLOGIST", status: "ACTIVE" },
     create: {
-      id: "seed-user-psych",
       schoolId: school.id,
       name: "Dr. James Okafor",
       email: "psych@westside.edu",
-      role: UserRole.PSYCHOLOGIST,
+      passwordHash: "$2b$10$e8wU/syntheticHashForPsychUser123456",
+      role: "PSYCHOLOGIST",
+      status: "ACTIVE",
     },
   });
 
   const teacherUser = await prisma.user.upsert({
     where: { email: "teacher@westside.edu" },
-    update: {},
+    update: { name: "Ms. Laura Bennett", role: "TEACHER", status: "ACTIVE" },
     create: {
-      id: "seed-user-teacher",
       schoolId: school.id,
       name: "Ms. Laura Bennett",
       email: "teacher@westside.edu",
-      role: UserRole.TEACHER,
+      passwordHash: "$2b$10$e8wU/syntheticHashForTeacherUser123456",
+      role: "TEACHER",
+      status: "ACTIVE",
     },
   });
-  console.log(`  ✅ Users: ${adminUser.name}, ${psychUser.name}, ${teacherUser.name}`);
+  console.log(`  ✅ 5. Users: Admin (${adminUser.name}), Psych (${psychUser.name}), Teacher (${teacherUser.name})`);
 
-  // ── 3. Students ────────────────────────────────────────────
+  // ── 6. Students (3 Synthetic Records) ──────────────────────
   const student1 = await prisma.student.upsert({
-    where: { schoolId_studentCode: { schoolId: school.id, studentCode: "STU-4029" } },
-    update: {},
+    where: { schoolId_studentId: { schoolId: school.id, studentId: "STU-1001" } },
+    update: {
+      firstName: "Alex",
+      lastName: "Morgan",
+      fullName: "Alex Morgan",
+      classId: class8.id,
+      sectionId: section8B.id,
+    },
     create: {
-      id: "seed-student-1",
       schoolId: school.id,
-      studentCode: "STU-4029",
-      name: "Demo Student A",
-      dateOfBirth: null, // Cannot auto-migrate from mock age — to be filled manually
-      grade: "Grade 8",
-      classGroup: "8B",
-      homeroom: "Homeroom 8B",
-      iepStatus: "None Active",
-      wellnessStatus: WellnessStatus.ATTENTION_REQUIRED,
-      primaryDomainFlag: "Emotional Regulation",
+      studentId: "STU-1001",
+      externalStudentId: "EXT-STU-9001",
+      admissionNo: "ADM-2024-001",
+      registrationNo: "REG-801",
+      firstName: "Alex",
+      middleName: "Taylor",
+      lastName: "Morgan",
+      fullName: "Alex Morgan",
+      email: "alex.morgan.student@westside.edu",
+      phone: "+1-555-0141",
+      alternatePhone: "+1-555-0142",
+      gender: "Male",
+      dateOfBirth: new Date("2011-04-12"),
+      classId: class8.id,
+      sectionId: section8B.id,
+      photoUrl: "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6",
+      source: "SCHOOL_API",
+      isActive: true,
+      lastSyncedAt: new Date(),
     },
   });
 
   const student2 = await prisma.student.upsert({
-    where: { schoolId_studentCode: { schoolId: school.id, studentCode: "STU-4055" } },
-    update: {},
+    where: { schoolId_studentId: { schoolId: school.id, studentId: "STU-1002" } },
+    update: {
+      firstName: "Maya",
+      lastName: "Patel",
+      fullName: "Maya Patel",
+      classId: class4.id,
+      sectionId: section4A.id,
+    },
     create: {
-      id: "seed-student-2",
       schoolId: school.id,
-      studentCode: "STU-4055",
-      name: "Demo Student B",
-      dateOfBirth: null,
-      grade: "Grade 4",
-      classGroup: "4B",
-      homeroom: "Homeroom 4B",
-      iepStatus: "Under Evaluation",
-      wellnessStatus: WellnessStatus.MONITOR,
-      primaryDomainFlag: "Focus & Attention",
+      studentId: "STU-1002",
+      externalStudentId: "EXT-STU-9002",
+      admissionNo: "ADM-2024-002",
+      registrationNo: "REG-402",
+      firstName: "Maya",
+      middleName: "A.",
+      lastName: "Patel",
+      fullName: "Maya Patel",
+      email: "maya.patel.student@westside.edu",
+      phone: "+1-555-0188",
+      alternatePhone: null,
+      gender: "Female",
+      dateOfBirth: new Date("2015-09-21"),
+      classId: class4.id,
+      sectionId: section4A.id,
+      photoUrl: "https://images.unsplash.com/photo-1517841905240-472988babdf9",
+      source: "MANUAL",
+      isActive: true,
     },
   });
 
   const student3 = await prisma.student.upsert({
-    where: { schoolId_studentCode: { schoolId: school.id, studentCode: "STU-4102" } },
-    update: {},
+    where: { schoolId_studentId: { schoolId: school.id, studentId: "STU-1003" } },
+    update: {
+      firstName: "Liam",
+      lastName: "Johnson",
+      fullName: "Liam Johnson",
+      classId: class8.id,
+      sectionId: section8A.id,
+    },
     create: {
-      id: "seed-student-3",
       schoolId: school.id,
-      studentCode: "STU-4102",
-      name: "Demo Student C",
-      dateOfBirth: null,
-      grade: "Grade 5",
-      classGroup: "5A",
-      homeroom: "Homeroom 5A",
-      iepStatus: "None Active",
-      wellnessStatus: WellnessStatus.NORMAL,
+      studentId: "STU-1003",
+      externalStudentId: "EXT-STU-9003",
+      admissionNo: "ADM-2024-003",
+      registrationNo: "REG-803",
+      firstName: "Liam",
+      middleName: "C.",
+      lastName: "Johnson",
+      fullName: "Liam Johnson",
+      email: "liam.johnson.student@westside.edu",
+      phone: "+1-555-0199",
+      alternatePhone: null,
+      gender: "Male",
+      dateOfBirth: new Date("2011-11-05"),
+      classId: class8.id,
+      sectionId: section8A.id,
+      photoUrl: null,
+      source: "BULK_IMPORT",
+      isActive: true,
     },
   });
-  console.log(`  ✅ Students: ${student1.studentCode}, ${student2.studentCode}, ${student3.studentCode}`);
+  console.log(`  ✅ 6. Students: ${student1.fullName}, ${student2.fullName}, ${student3.fullName}`);
 
-  // ── 4. Guardians ───────────────────────────────────────────
-  await prisma.guardian.upsert({
-    where: { id: "seed-guardian-1" },
-    update: {},
-    create: {
-      id: "seed-guardian-1",
-      studentId: student1.id,
-      name: "Guardian A",
-      relationship: "Parent",
-      email: "guardian.a@example.com",
-      phone: null,
-    },
+  // ── 7. Student Import & Error Header ───────────────────────
+  const existingImport = await prisma.studentImport.findFirst({
+    where: { schoolId: school.id, fileName: "students_roster_fall2024.csv" },
   });
+  const studentImport = existingImport
+    ? existingImport
+    : await prisma.studentImport.create({
+        data: {
+          schoolId: school.id,
+          fileName: "students_roster_fall2024.csv",
+          totalRows: 50,
+          successCount: 49,
+          failedCount: 1,
+          uploadedBy: adminUser.id,
+        },
+      });
 
-  await prisma.guardian.upsert({
-    where: { id: "seed-guardian-2" },
-    update: {},
-    create: {
-      id: "seed-guardian-2",
-      studentId: student2.id,
-      name: "Guardian B",
-      relationship: "Legal Guardian",
-      email: null,
-      phone: "+1-555-0100",
-    },
+  const existingError = await prisma.studentImportError.findFirst({
+    where: { importId: studentImport.id, rowNumber: 14 },
   });
-  console.log("  ✅ Guardians: 2 created");
-
-  // ── 5. Observation ─────────────────────────────────────────
-  await prisma.observation.upsert({
-    where: { recordNumber: "#SEED-001" },
-    update: {},
-    create: {
-      id: "seed-obs-1",
-      recordNumber: "#SEED-001",
-      studentId: student1.id,
-      authorId: teacherUser.id,
-      submittedByName: null,
-      source: ObservationSource.TEACHER,
-      concernCategory: "Emotional Regulation",
-      status: ObservationStatus.PENDING_REVIEW,
-      classGroupSnapshot: "8B - Science",
-      observedAt: new Date("2024-10-24"),
-      incidentTime: "Oct 23, 2024 - 11:15 AM",
-      setting: "Science Lab",
-      narrative: "Demo observation narrative for seed verification purposes only.",
-      triggers: "Group work with shared materials.",
-      interventions: "Verbal reassurance provided.",
-      psychologistNotes: null,
-    },
-  });
-  console.log("  ✅ Observation: #SEED-001");
-
-  // ── 6. Assessment Protocol ─────────────────────────────────
-  const protocol = await prisma.assessmentProtocol.upsert({
-    where: { id: "seed-protocol-ewi" },
-    update: {},
-    create: {
-      id: "seed-protocol-ewi",
-      title: "Emotional Wellbeing Inventory (Demo)",
-      description: "Demo protocol for seed verification. Not for clinical use.",
-      domains: ["Anxiety", "Mood", "Stress"],
-      estimatedTime: "15-20 mins",
-    },
-  });
-
-  // Assessment Questions with explicit ordering
-  const questionData = [
-    { id: "seed-q-1", text: "Student expresses nervousness before assessments.", domain: "Anxiety", order: 1 },
-    { id: "seed-q-2", text: "Student recovers quickly after making a mistake.", domain: "Mood", order: 2 },
-    { id: "seed-q-3", text: "Student appears overwhelmed with multi-step instructions.", domain: "Stress", order: 3 },
-  ];
-
-  for (const q of questionData) {
-    await prisma.assessmentQuestion.upsert({
-      where: { id: q.id },
-      update: {},
-      create: {
-        id: q.id,
-        protocolId: protocol.id,
-        text: q.text,
-        domain: q.domain,
-        order: q.order,
-        questionType: "LIKERT",
+  if (!existingError) {
+    await prisma.studentImportError.create({
+      data: {
+        importId: studentImport.id,
+        rowNumber: 14,
+        studentId: "STU-INVALID",
+        email: "malformed.email@domain",
+        name: "Corrupted Record",
+        errorMessage: "Invalid email format and missing mandatory admission number",
       },
     });
   }
-  console.log(`  ✅ AssessmentProtocol: ${protocol.title} (${questionData.length} questions)`);
+  console.log(`  ✅ 7. Student Import & Error log created`);
 
-  // ── Summary ────────────────────────────────────────────────
-  console.log("\n🎉 Seed complete.");
-  console.log("   School → Users → Students → Guardians → Observation → Protocol ✅");
+  // ── 8. Student Observations ────────────────────────────────
+  const existingObs = await prisma.studentObservation.findFirst({
+    where: { studentId: student1.id, category: "Behavioral" },
+  });
+  if (!existingObs) {
+    await prisma.studentObservation.create({
+      data: {
+        schoolId: school.id,
+        studentId: student1.id,
+        submittedBy: teacherUser.id,
+        source: "TEACHER",
+        category: "Behavioral",
+        observation: "Student demonstrated frustration and verbal outburst during timed math quiz.",
+        additionalComments: "Calmed down after 5 minutes in quiet corner.",
+        status: "REVIEWED",
+        observedAt: new Date("2024-10-18"),
+      },
+    });
+  }
+  console.log(`  ✅ 8. Student Observation seeded for ${student1.fullName}`);
+
+  // ── 9. Assessment Template, Domains, Questions, Options ────
+  let template = await prisma.assessmentTemplate.findFirst({
+    where: { schoolId: school.id, name: "Emotional & Behavioral Wellbeing Inventory" },
+  });
+  if (!template) {
+    template = await prisma.assessmentTemplate.create({
+      data: {
+        schoolId: school.id,
+        name: "Emotional & Behavioral Wellbeing Inventory",
+        description: "Standardized screening protocol for assessing emotional regulation and social engagement.",
+        category: "Social/Emotional",
+        estimatedMinutes: 15,
+        status: "PUBLISHED",
+        version: "1.0",
+        createdBy: psychUser.id,
+      },
+    });
+  }
+
+  // Domains
+  let domain1 = await prisma.assessmentDomain.findFirst({
+    where: { assessmentTemplateId: template.id, name: "Emotional Regulation" },
+  });
+  if (!domain1) {
+    domain1 = await prisma.assessmentDomain.create({
+      data: {
+        assessmentTemplateId: template.id,
+        name: "Emotional Regulation",
+        description: "Measures emotional balance, frustration tolerance, and mood consistency.",
+        displayOrder: 1,
+      },
+    });
+  }
+
+  let domain2 = await prisma.assessmentDomain.findFirst({
+    where: { assessmentTemplateId: template.id, name: "Peer Engagement" },
+  });
+  if (!domain2) {
+    domain2 = await prisma.assessmentDomain.create({
+      data: {
+        assessmentTemplateId: template.id,
+        name: "Peer Engagement",
+        description: "Measures collaboration, social interaction, and conflict resolution with peers.",
+        displayOrder: 2,
+      },
+    });
+  }
+
+  // Questions & Options
+  const q1Text = "How often does the student show intense frustration when facing difficult tasks?";
+  let q1 = await prisma.assessmentQuestion.findFirst({
+    where: { assessmentTemplateId: template.id, domainId: domain1.id, questionText: q1Text },
+  });
+  if (!q1) {
+    q1 = await prisma.assessmentQuestion.create({
+      data: {
+        assessmentTemplateId: template.id,
+        domainId: domain1.id,
+        questionText: q1Text,
+        questionType: "LIKERT",
+        isRequired: true,
+        displayOrder: 1,
+      },
+    });
+
+    const optionsQ1 = [
+      { label: "Never", value: "0", score: new Prisma.Decimal("0.00"), displayOrder: 1 },
+      { label: "Rarely", value: "1", score: new Prisma.Decimal("1.00"), displayOrder: 2 },
+      { label: "Sometimes", value: "2", score: new Prisma.Decimal("2.00"), displayOrder: 3 },
+      { label: "Often", value: "3", score: new Prisma.Decimal("3.00"), displayOrder: 4 },
+    ];
+    for (const opt of optionsQ1) {
+      await prisma.assessmentOption.create({
+        data: {
+          questionId: q1.id,
+          label: opt.label,
+          value: opt.value,
+          score: opt.score,
+          displayOrder: opt.displayOrder,
+        },
+      });
+    }
+  }
+
+  const q2Text = "Does the student initiate positive interactions with peers during group work?";
+  let q2 = await prisma.assessmentQuestion.findFirst({
+    where: { assessmentTemplateId: template.id, domainId: domain2.id, questionText: q2Text },
+  });
+  if (!q2) {
+    q2 = await prisma.assessmentQuestion.create({
+      data: {
+        assessmentTemplateId: template.id,
+        domainId: domain2.id,
+        questionText: q2Text,
+        questionType: "LIKERT",
+        isRequired: true,
+        displayOrder: 2,
+      },
+    });
+
+    const optionsQ2 = [
+      { label: "Always", value: "0", score: new Prisma.Decimal("0.00"), displayOrder: 1 },
+      { label: "Usually", value: "1", score: new Prisma.Decimal("1.00"), displayOrder: 2 },
+      { label: "Seldom", value: "2", score: new Prisma.Decimal("2.00"), displayOrder: 3 },
+      { label: "Never", value: "3", score: new Prisma.Decimal("3.00"), displayOrder: 4 },
+    ];
+    for (const opt of optionsQ2) {
+      await prisma.assessmentOption.create({
+        data: {
+          questionId: q2.id,
+          label: opt.label,
+          value: opt.value,
+          score: opt.score,
+          displayOrder: opt.displayOrder,
+        },
+      });
+    }
+  }
+
+  // Scoring Rules (Overall + Domain)
+  const existingRules = await prisma.assessmentScoringRule.findMany({
+    where: { assessmentTemplateId: template.id },
+  });
+  if (existingRules.length === 0) {
+    // Overall Rules
+    await prisma.assessmentScoringRule.createMany({
+      data: [
+        {
+          assessmentTemplateId: template.id,
+          scope: "OVERALL",
+          domainId: null,
+          minScore: new Prisma.Decimal("0.00"),
+          maxScore: new Prisma.Decimal("2.00"),
+          resultLabel: "Typical / Low Concern",
+          attentionLevel: "NORMAL",
+        },
+        {
+          assessmentTemplateId: template.id,
+          scope: "OVERALL",
+          domainId: null,
+          minScore: new Prisma.Decimal("2.01"),
+          maxScore: new Prisma.Decimal("4.00"),
+          resultLabel: "Moderate Concern",
+          attentionLevel: "MONITOR",
+        },
+        {
+          assessmentTemplateId: template.id,
+          scope: "OVERALL",
+          domainId: null,
+          minScore: new Prisma.Decimal("4.01"),
+          maxScore: new Prisma.Decimal("6.00"),
+          resultLabel: "Elevated Concern",
+          attentionLevel: "ATTENTION_REQUIRED",
+        },
+      ],
+    });
+
+    // Domain Rules
+    await prisma.assessmentScoringRule.create({
+      data: {
+        assessmentTemplateId: template.id,
+        scope: "DOMAIN",
+        domainId: domain1.id,
+        minScore: new Prisma.Decimal("0.00"),
+        maxScore: new Prisma.Decimal("3.00"),
+        resultLabel: "Emotional Dysregulation Risk",
+        attentionLevel: "MONITOR",
+      },
+    });
+  }
+  console.log(`  ✅ 9. Template, Domains, Questions, Options & Scoring Rules configured`);
+
+  // ── 10. Student Assessment, Responses & Domain Results ──────
+  let assessment = await prisma.studentAssessment.findFirst({
+    where: { schoolId: school.id, studentId: student1.id, assessmentTemplateId: template.id },
+  });
+
+  if (!assessment) {
+    assessment = await prisma.studentAssessment.create({
+      data: {
+        schoolId: school.id,
+        studentId: student1.id,
+        assessmentTemplateId: template.id,
+        startedAt: new Date("2024-10-20T10:00:00Z"),
+        completedAt: new Date("2024-10-20T10:15:00Z"),
+        status: "COMPLETED",
+        overallScore: new Prisma.Decimal("4.50"),
+        attentionLevel: "ATTENTION_REQUIRED",
+        createdBy: psychUser.id,
+        reviewedBy: psychUser.id,
+        reviewedAt: new Date("2024-10-21T14:30:00Z"),
+        professionalInterpretation:
+          "Student exhibits elevated emotional reactivity during timed academic tasks. Peer collaboration is moderately impacted.",
+        recommendations:
+          "1. Provide structured sensory breaks prior to testing.\n2. Utilize visual timers.\n3. Schedule bi-weekly psychologist check-ins.",
+      },
+    });
+  }
+
+  // Responses
+  const q1Options = await prisma.assessmentOption.findMany({ where: { questionId: q1.id } });
+  const selectedOptQ1 = q1Options.find((o) => o.value === "3") || q1Options[0];
+
+  const q2Options = await prisma.assessmentOption.findMany({ where: { questionId: q2.id } });
+  const selectedOptQ2 = q2Options.find((o) => o.value === "2") || q2Options[0];
+
+  await prisma.assessmentResponse.upsert({
+    where: {
+      studentAssessmentId_questionId: {
+        studentAssessmentId: assessment.id,
+        questionId: q1.id,
+      },
+    },
+    update: {
+      selectedOptionId: selectedOptQ1.id,
+      score: selectedOptQ1.score,
+      textResponse: "Student exhibited visible distress.",
+    },
+    create: {
+      studentAssessmentId: assessment.id,
+      questionId: q1.id,
+      selectedOptionId: selectedOptQ1.id,
+      score: selectedOptQ1.score,
+      textResponse: "Student exhibited visible distress.",
+    },
+  });
+
+  await prisma.assessmentResponse.upsert({
+    where: {
+      studentAssessmentId_questionId: {
+        studentAssessmentId: assessment.id,
+        questionId: q2.id,
+      },
+    },
+    update: {
+      selectedOptionId: selectedOptQ2.id,
+      score: selectedOptQ2.score,
+      textResponse: "Hesitant when joining pairs.",
+    },
+    create: {
+      studentAssessmentId: assessment.id,
+      questionId: q2.id,
+      selectedOptionId: selectedOptQ2.id,
+      score: selectedOptQ2.score,
+      textResponse: "Hesitant when joining pairs.",
+    },
+  });
+
+  // Domain Results
+  await prisma.assessmentDomainResult.upsert({
+    where: {
+      studentAssessmentId_domainId: {
+        studentAssessmentId: assessment.id,
+        domainId: domain1.id,
+      },
+    },
+    update: {
+      score: new Prisma.Decimal("3.00"),
+      maxScore: new Prisma.Decimal("3.00"),
+      resultLabel: "Elevated Concern",
+      attentionLevel: "ATTENTION_REQUIRED",
+    },
+    create: {
+      studentAssessmentId: assessment.id,
+      domainId: domain1.id,
+      score: new Prisma.Decimal("3.00"),
+      maxScore: new Prisma.Decimal("3.00"),
+      resultLabel: "Elevated Concern",
+      attentionLevel: "ATTENTION_REQUIRED",
+    },
+  });
+
+  await prisma.assessmentDomainResult.upsert({
+    where: {
+      studentAssessmentId_domainId: {
+        studentAssessmentId: assessment.id,
+        domainId: domain2.id,
+      },
+    },
+    update: {
+      score: new Prisma.Decimal("1.50"),
+      maxScore: new Prisma.Decimal("3.00"),
+      resultLabel: "Moderate Concern",
+      attentionLevel: "MONITOR",
+    },
+    create: {
+      studentAssessmentId: assessment.id,
+      domainId: domain2.id,
+      score: new Prisma.Decimal("1.50"),
+      maxScore: new Prisma.Decimal("3.00"),
+      resultLabel: "Moderate Concern",
+      attentionLevel: "MONITOR",
+    },
+  });
+  console.log(`  ✅ 10. Student Assessment, Responses & Domain Results created`);
+
+  // ── 11. Reports & Report Snapshots ─────────────────────────
+  let report = await prisma.report.findFirst({
+    where: { schoolId: school.id, studentId: student1.id, reportType: "STUDENT" },
+  });
+
+  if (!report) {
+    report = await prisma.report.create({
+      data: {
+        schoolId: school.id,
+        studentId: student1.id,
+        assessmentId: assessment.id,
+        reportType: "STUDENT",
+        title: `Comprehensive Psychological Assessment Report: ${student1.fullName}`,
+        status: "FINALIZED",
+        classId: class8.id,
+        sectionId: section8B.id,
+        academicSessionId: academicSession.id,
+        generatedBy: psychUser.id,
+        generatedAt: new Date("2024-10-22T09:00:00Z"),
+        fileUrl: "https://storage.westside.edu/reports/rep-2024-1001.pdf",
+      },
+    });
+  }
+
+  const existingSnapshot = await prisma.reportSnapshot.findFirst({
+    where: { reportId: report.id },
+  });
+
+  if (!existingSnapshot) {
+    await prisma.reportSnapshot.create({
+      data: {
+        reportId: report.id,
+        contentJson: {
+          reportVersion: "1.0",
+          student: {
+            id: student1.studentId,
+            fullName: student1.fullName,
+            dob: student1.dateOfBirth?.toISOString().split("T")[0],
+            class: "Grade 8 - Section 8B",
+          },
+          summary: {
+            overallScore: 4.5,
+            attentionLevel: "ATTENTION_REQUIRED",
+            assessmentTitle: template.name,
+            domains: [
+              { name: "Emotional Regulation", score: 3.0, maxScore: 3.0, level: "ATTENTION_REQUIRED" },
+              { name: "Peer Engagement", score: 1.5, maxScore: 3.0, level: "MONITOR" },
+            ],
+          },
+          clinicalNotes: assessment.professionalInterpretation,
+          recommendations: assessment.recommendations,
+          signOff: {
+            psychologist: psychUser.name,
+            timestamp: "2024-10-22T09:00:00Z",
+          },
+        },
+      },
+    });
+  }
+  console.log(`  ✅ 11. Report & Immutable Snapshot created`);
+
+  console.log("\n🎉 Seed complete! All 20 tables successfully seeded with connected relational data.");
 }
 
 main()

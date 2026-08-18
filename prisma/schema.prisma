@@ -1,6 +1,6 @@
 // ============================================================
 // EduWell Psych — Prisma Schema
-// Phase 1 — Step 3
+// Manager V1 Specification (20 Tables)
 // ============================================================
 
 generator client {
@@ -8,277 +8,524 @@ generator client {
   output   = "../src/generated/prisma"
 }
 
-// Prisma 7: URL is configured in prisma.config.ts, not here
+// Prisma 7: Database URL is configured in prisma.config.ts
 datasource db {
   provider = "postgresql"
 }
 
 // ============================================================
-// Enums
-// ============================================================
-
-enum UserRole {
-  ADMIN
-  PSYCHOLOGIST
-  TEACHER
-}
-
-enum WellnessStatus {
-  NORMAL
-  MONITOR
-  ATTENTION_REQUIRED
-}
-
-enum ObservationStatus {
-  NEW
-  PENDING_REVIEW
-  REVIEWED
-  ASSESSED
-}
-
-enum ObservationSource {
-  TEACHER
-  PARENT
-  COUNSELOR
-  PSYCHOLOGIST
-}
-
-enum AssessmentStatus {
-  DRAFT
-  IN_PROGRESS
-  COMPLETED
-}
-
-enum ReportStatus {
-  DRAFT
-  FINALIZED
-}
-
-// ============================================================
-// School — Root Tenant Entity
+// 1. schools — Root Tenant Master
 // ============================================================
 
 model School {
-  id        String   @id @default(uuid())
-  name      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(255)
+  code      String   @unique @db.VarChar(50)
+  status    String   @default("ACTIVE") @db.VarChar(20) // ACTIVE, INACTIVE
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
 
-  users    User[]
-  students Student[]
-  reports  Report[]
+  apiConfigs          SchoolApiConfig[]
+  users               User[]
+  academicSessions    AcademicSession[]
+  classes             Class[]
+  students            Student[]
+  studentImports      StudentImport[]
+  observations        StudentObservation[]
+  assessmentTemplates AssessmentTemplate[]
+  studentAssessments  StudentAssessment[]
+  reports             Report[]
+
+  @@map("schools")
 }
 
 // ============================================================
-// User — Staff Member (No Auth Credentials Yet)
+// 2. school_api_configs — External School API Settings
+// ============================================================
+
+model SchoolApiConfig {
+  id           Int       @id @default(autoincrement())
+  schoolId     Int       @map("school_id")
+  baseUrl      String    @map("base_url") @db.VarChar(255)
+  schoolCode   String    @map("school_code") @db.VarChar(50)
+  appVersion   String    @map("app_version") @db.VarChar(20)
+  appOs        String    @map("app_os") @db.VarChar(20)
+  isEnabled    Boolean   @default(true) @map("is_enabled")
+  lastTestedAt DateTime? @map("last_tested_at") @db.Timestamp(6)
+  lastSyncAt   DateTime? @map("last_sync_at") @db.Timestamp(6)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId])
+  @@map("school_api_configs")
+}
+
+// ============================================================
+// 3. users — Staff / System Users
 // ============================================================
 
 model User {
-  id        String   @id @default(uuid())
-  schoolId  String
-  school    School   @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  name      String
-  email     String   @unique
-  role      UserRole @default(TEACHER)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           Int      @id @default(autoincrement())
+  schoolId     Int      @map("school_id")
+  name         String   @db.VarChar(100)
+  email        String   @unique @db.VarChar(255)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  role         String   @default("TEACHER") @db.VarChar(30) // ADMIN, PSYCHOLOGIST, TEACHER
+  status       String   @default("ACTIVE") @db.VarChar(20)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
 
-  observations Observation[] @relation("ObservationAuthor")
-  assessments  Assessment[]  @relation("AssessmentCreatedBy")
-  reports      Report[]      @relation("ReportCreatedBy")
+  school                School               @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  uploadedImports       StudentImport[]      @relation("ImportUploadedBy")
+  observationsSubmitted StudentObservation[] @relation("ObservationSubmittedBy")
+  createdTemplates      AssessmentTemplate[] @relation("TemplateCreatedBy")
+  createdAssessments    StudentAssessment[]  @relation("AssessmentCreatedBy")
+  reviewedAssessments   StudentAssessment[]  @relation("AssessmentReviewedBy")
+  generatedReports      Report[]             @relation("ReportGeneratedBy")
 
   @@index([schoolId])
+  @@map("users")
 }
 
 // ============================================================
-// Student — Core Clinical Entity
+// 4. academic_sessions — School Academic Years / Terms
+// ============================================================
+
+model AcademicSession {
+  id                Int      @id @default(autoincrement())
+  schoolId          Int      @map("school_id")
+  externalSessionId String?  @map("external_session_id") @db.VarChar(50)
+  name              String   @db.VarChar(100)
+  startDate         DateTime @map("start_date") @db.Date
+  endDate           DateTime @map("end_date") @db.Date
+  isCurrent         Boolean  @default(false) @map("is_current")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  school  School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  reports Report[]
+
+  @@index([schoolId])
+  @@map("academic_sessions")
+}
+
+// ============================================================
+// 5. classes — Grade Levels / Academic Classes
+// ============================================================
+
+model Class {
+  id              Int      @id @default(autoincrement())
+  schoolId        Int      @map("school_id")
+  externalClassId String?  @map("external_class_id") @db.VarChar(50)
+  name            String   @db.VarChar(100)
+  displayOrder    Int      @default(0) @map("display_order")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  school   School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  sections Section[]
+  students Student[]
+  reports  Report[]
+
+  @@index([schoolId])
+  @@map("classes")
+}
+
+// ============================================================
+// 6. sections — Class Sections / Divisions
+// ============================================================
+
+model Section {
+  id                Int      @id @default(autoincrement())
+  classId           Int      @map("class_id")
+  externalSectionId String?  @map("external_section_id") @db.VarChar(50)
+  name              String   @db.VarChar(50)
+  isActive          Boolean  @default(true) @map("is_active")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  class    Class     @relation(fields: [classId], references: [id], onDelete: Cascade)
+  students Student[]
+  reports  Report[]
+
+  @@index([classId])
+  @@map("sections")
+}
+
+// ============================================================
+// 7. students — Local Master Student Record
 // ============================================================
 
 model Student {
-  id                String         @id @default(uuid())
-  schoolId          String
-  school            School         @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  studentCode       String // Human-readable: 'STU-4029' — unique per school
-  name              String
-  dateOfBirth       DateTime? // Nullable during seed — age cannot be auto-migrated from mock data
-  grade             String
-  classGroup        String
-  homeroom          String
-  iepStatus         String
-  wellnessStatus    WellnessStatus @default(NORMAL)
-  primaryDomainFlag String? // Optional display label (e.g., 'Emotional Regulation (Score: 2.1)')
-  avatarUrl         String?
-  archivedAt        DateTime? // Soft archive — null = active student
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
+  id                Int       @id @default(autoincrement())
+  schoolId          Int       @map("school_id")
+  studentId         String    @map("student_id") @db.VarChar(50) // Local normalized identifier (e.g. STU-1001)
+  externalStudentId String?   @map("external_student_id") @db.VarChar(50) // School API Pk_Student_M
+  admissionNo       String?   @map("admission_no") @db.VarChar(50) // V_AdmissionNo
+  registrationNo    String?   @map("registration_no") @db.VarChar(50) // V_RegistrationNo
+  firstName         String?   @map("first_name") @db.VarChar(100) // V_S_FName
+  middleName        String?   @map("middle_name") @db.VarChar(100) // V_S_MName
+  lastName          String?   @map("last_name") @db.VarChar(100) // V_S_LName
+  fullName          String?   @map("full_name") @db.VarChar(255) // Display Name
+  email             String?   @db.VarChar(255) // V_Email (Supporting match only)
+  phone             String?   @db.VarChar(50) // V_ContactNo
+  alternatePhone    String?   @map("alternate_phone") @db.VarChar(50) // V_AlternateNo
+  gender            String?   @db.VarChar(20) // V_S_Gender
+  dateOfBirth       DateTime? @map("date_of_birth") @db.Date // Dt_BirthDate
+  classId           Int?      @map("class_id")
+  sectionId         Int?      @map("section_id")
+  photoUrl          String?   @map("photo_url") @db.VarChar(500) // imgpath
+  source            String    @default("MANUAL") @db.VarChar(30) // SCHOOL_API, MANUAL, BULK_IMPORT
+  isActive          Boolean   @default(true) @map("is_active")
+  lastSyncedAt      DateTime? @map("last_synced_at") @db.Timestamp(6)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamp(6)
 
-  guardians    Guardian[]
-  observations Observation[]
-  assessments  Assessment[]
-  reports      Report[]
+  school             School               @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  class              Class?               @relation(fields: [classId], references: [id], onDelete: SetNull)
+  section            Section?             @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  observations       StudentObservation[]
+  studentAssessments StudentAssessment[]
+  reports            Report[]
 
-  @@unique([schoolId, studentCode]) // Student codes are unique per school, not globally
+  @@unique([schoolId, studentId])
+  @@unique([schoolId, externalStudentId])
   @@index([schoolId])
-}
-
-// ============================================================
-// Guardian — Parent / Guardian Contact (No Auth Yet)
-// ============================================================
-
-model Guardian {
-  id           String   @id @default(uuid())
-  studentId    String
-  student      Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  name         String
-  relationship String
-  email        String?
-  phone        String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-}
-
-// ============================================================
-// Observation — Behavioral / Emotional Incident Record
-// ============================================================
-
-model Observation {
-  id                 String            @id @default(uuid())
-  recordNumber       String            @unique // e.g., '#842' — globally unique
-  studentId          String
-  student            Student           @relation(fields: [studentId], references: [id], onDelete: Restrict)
-  authorId           String? // Optional: null if submitted externally (parent/guardian)
-  author             User?             @relation("ObservationAuthor", fields: [authorId], references: [id], onDelete: SetNull)
-  submittedByName    String? // Free text attribution for external submissions
-  source             ObservationSource
-  concernCategory    String // Free text for Phase 1 — e.g., 'Social/Emotional', 'Behavioral'
-  status             ObservationStatus @default(NEW)
-  classGroupSnapshot String? // Historical snapshot of class at time of incident
-  observedAt         DateTime          @default(now())
-  incidentTime       String // Phase 1: free text — e.g., 'Oct 23, 2023 - 11:15 AM'
-  setting            String
-  narrative          String
-  triggers           String
-  interventions      String
-  psychologistNotes  String?
-  aiAnalysis         String? // Reserved for Phase 3 AI integration
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
-
   @@index([studentId])
+  @@index([externalStudentId])
+  @@index([admissionNo])
+  @@index([registrationNo])
+  @@index([classId])
+  @@index([sectionId])
+  @@map("students")
 }
 
 // ============================================================
-// AssessmentProtocol — Standardized Test Template
+// 8. student_imports — Bulk Import Tracking Header
 // ============================================================
 
-model AssessmentProtocol {
-  id            String   @id @default(uuid())
-  title         String
-  description   String
-  domains       String[] // Array of domain label strings — e.g., ['Anxiety', 'Mood', 'Stress']
-  estimatedTime String // Display string — e.g., '15-20 mins'
-  // questionCount is DERIVED from _count.questions — not persisted
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+model StudentImport {
+  id           Int      @id @default(autoincrement())
+  schoolId     Int      @map("school_id")
+  fileName     String   @map("file_name") @db.VarChar(255)
+  totalRows    Int      @default(0) @map("total_rows")
+  successCount Int      @default(0) @map("success_count")
+  failedCount  Int      @default(0) @map("failed_count")
+  uploadedBy   Int      @map("uploaded_by")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamp(6)
 
-  questions   AssessmentQuestion[]
-  assessments Assessment[]
+  school   School               @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  uploader User                 @relation("ImportUploadedBy", fields: [uploadedBy], references: [id], onDelete: Restrict)
+  errors   StudentImportError[]
+
+  @@index([schoolId])
+  @@index([uploadedBy])
+  @@map("student_imports")
 }
 
 // ============================================================
-// AssessmentQuestion — Individual Question in a Protocol
+// 9. student_import_errors — Bulk Import Row-Level Error Logs
+// ============================================================
+
+model StudentImportError {
+  id           Int      @id @default(autoincrement())
+  importId     Int      @map("import_id")
+  rowNumber    Int      @map("row_number")
+  studentId    String?  @map("student_id") @db.VarChar(50)
+  email        String?  @db.VarChar(255)
+  name         String?  @db.VarChar(255)
+  errorMessage String   @map("error_message") @db.Text
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  studentImport StudentImport @relation(fields: [importId], references: [id], onDelete: Cascade)
+
+  @@index([importId])
+  @@map("student_import_errors")
+}
+
+// ============================================================
+// 10. student_observations — Behavioral Concerns & Logs
+// ============================================================
+
+model StudentObservation {
+  id                 Int      @id @default(autoincrement())
+  schoolId           Int      @map("school_id")
+  studentId          Int      @map("student_id")
+  submittedBy        Int      @map("submitted_by")
+  source             String   @db.VarChar(30) // TEACHER, PARENT, PSYCHOLOGIST
+  category           String   @db.VarChar(100)
+  observation        String   @db.Text
+  additionalComments String?  @map("additional_comments") @db.Text
+  status             String   @default("PENDING") @db.VarChar(30)
+  observedAt         DateTime @map("observed_at") @db.Date
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  school    School  @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  submitter User    @relation("ObservationSubmittedBy", fields: [submittedBy], references: [id], onDelete: Restrict)
+
+  @@index([schoolId])
+  @@index([studentId])
+  @@index([submittedBy])
+  @@map("student_observations")
+}
+
+// ============================================================
+// 11. assessment_templates — Clinical Protocols / Definitions
+// ============================================================
+
+model AssessmentTemplate {
+  id               Int      @id @default(autoincrement())
+  schoolId         Int      @map("school_id")
+  name             String   @db.VarChar(255)
+  description      String?  @db.Text
+  category         String   @db.VarChar(100)
+  estimatedMinutes Int?     @map("estimated_minutes")
+  status           String   @default("DRAFT") @db.VarChar(20) // DRAFT, PUBLISHED, ARCHIVED
+  version          String   @default("1.0") @db.VarChar(20)
+  createdBy        Int      @map("created_by")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  school             School                  @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  creator            User                    @relation("TemplateCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+  domains            AssessmentDomain[]
+  questions          AssessmentQuestion[]
+  scoringRules       AssessmentScoringRule[]
+  studentAssessments StudentAssessment[]
+
+  @@index([schoolId])
+  @@index([createdBy])
+  @@map("assessment_templates")
+}
+
+// ============================================================
+// 12. assessment_domains — Assessment Target Domains
+// ============================================================
+
+model AssessmentDomain {
+  id                   Int     @id @default(autoincrement())
+  assessmentTemplateId Int     @map("assessment_template_id")
+  name                 String  @db.VarChar(100)
+  description          String? @db.Text
+  displayOrder         Int     @default(0) @map("display_order")
+
+  assessmentTemplate AssessmentTemplate       @relation(fields: [assessmentTemplateId], references: [id], onDelete: Cascade)
+  questions          AssessmentQuestion[]
+  scoringRules       AssessmentScoringRule[]
+  domainResults      AssessmentDomainResult[]
+
+  @@index([assessmentTemplateId])
+  @@map("assessment_domains")
+}
+
+// ============================================================
+// 13. assessment_questions — Questions within Template / Domain
 // ============================================================
 
 model AssessmentQuestion {
-  id           String             @id @default(uuid())
-  protocolId   String
-  protocol     AssessmentProtocol @relation(fields: [protocolId], references: [id], onDelete: Cascade)
-  text         String
-  domain       String
-  order        Int // Explicit ordering — never rely on insertion order
-  questionType String             @default("LIKERT") // Future values: YES_NO, MULTIPLE_CHOICE, TEXT
-  config       Json? // Optional type-specific configuration (labels, scale, options)
+  id                   Int      @id @default(autoincrement())
+  assessmentTemplateId Int      @map("assessment_template_id")
+  domainId             Int      @map("domain_id")
+  questionText         String   @map("question_text") @db.Text
+  questionType         String   @default("LIKERT") @map("question_type") @db.VarChar(50)
+  isRequired           Boolean  @default(true) @map("is_required")
+  displayOrder         Int      @default(0) @map("display_order")
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
 
-  responses AssessmentResponse[]
+  assessmentTemplate AssessmentTemplate   @relation(fields: [assessmentTemplateId], references: [id], onDelete: Cascade)
+  domain             AssessmentDomain     @relation(fields: [domainId], references: [id], onDelete: Cascade)
+  options            AssessmentOption[]
+  responses          AssessmentResponse[]
+
+  @@index([assessmentTemplateId])
+  @@index([domainId])
+  @@map("assessment_questions")
 }
 
 // ============================================================
-// Assessment — One Student's Live Assessment Session
+// 14. assessment_options — Multiple Choice / Likert Options
 // ============================================================
 
-model Assessment {
-  id          String             @id @default(uuid())
-  studentId   String
-  student     Student            @relation(fields: [studentId], references: [id], onDelete: Restrict)
-  protocolId  String
-  protocol    AssessmentProtocol @relation(fields: [protocolId], references: [id], onDelete: Restrict)
-  createdById String?
-  createdBy   User?              @relation("AssessmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  status      AssessmentStatus   @default(DRAFT)
-  startedAt   DateTime? // When the session was first opened
-  completedAt DateTime? // When the session was submitted
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
+model AssessmentOption {
+  id           Int     @id @default(autoincrement())
+  questionId   Int     @map("question_id")
+  label        String  @db.VarChar(100)
+  value        String  @db.VarChar(100)
+  score        Decimal @default(0.00) @db.Decimal(5, 2)
+  displayOrder Int     @default(0) @map("display_order")
 
+  question  AssessmentQuestion   @relation(fields: [questionId], references: [id], onDelete: Cascade)
   responses AssessmentResponse[]
-  result    AssessmentResult?
 
+  @@index([questionId])
+  @@map("assessment_options")
+}
+
+// ============================================================
+// 15. assessment_scoring_rules — Scoring Thresholds & Bands
+// ============================================================
+
+model AssessmentScoringRule {
+  id                   Int     @id @default(autoincrement())
+  assessmentTemplateId Int     @map("assessment_template_id")
+  scope                String  @db.VarChar(20) // OVERALL, DOMAIN
+  domainId             Int?    @map("domain_id")
+  minScore             Decimal @map("min_score") @db.Decimal(5, 2)
+  maxScore             Decimal @map("max_score") @db.Decimal(5, 2)
+  resultLabel          String  @map("result_label") @db.VarChar(100)
+  attentionLevel       String  @map("attention_level") @db.VarChar(50)
+
+  assessmentTemplate AssessmentTemplate @relation(fields: [assessmentTemplateId], references: [id], onDelete: Cascade)
+  domain             AssessmentDomain?  @relation(fields: [domainId], references: [id], onDelete: Cascade)
+
+  @@index([assessmentTemplateId])
+  @@index([domainId])
+  @@map("assessment_scoring_rules")
+}
+
+// ============================================================
+// 16. student_assessments — Student Assessment Session / Attempt
+// ============================================================
+
+model StudentAssessment {
+  id                         Int       @id @default(autoincrement())
+  schoolId                   Int       @map("school_id")
+  studentId                  Int       @map("student_id")
+  assessmentTemplateId       Int       @map("assessment_template_id")
+  startedAt                  DateTime? @map("started_at") @db.Timestamp(6)
+  completedAt                DateTime? @map("completed_at") @db.Timestamp(6)
+  status                     String    @default("DRAFT") @db.VarChar(30) // DRAFT, IN_PROGRESS, COMPLETED, REVIEWED
+  overallScore               Decimal?  @map("overall_score") @db.Decimal(5, 2)
+  attentionLevel             String?   @map("attention_level") @db.VarChar(50)
+  createdBy                  Int       @map("created_by")
+  reviewedBy                 Int?      @map("reviewed_by")
+  reviewedAt                 DateTime? @map("reviewed_at") @db.Timestamp(6)
+  professionalInterpretation String?   @map("professional_interpretation") @db.Text
+  recommendations            String?   @db.Text
+  createdAt                  DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt                  DateTime  @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  school             School                   @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  student            Student                  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  assessmentTemplate AssessmentTemplate       @relation(fields: [assessmentTemplateId], references: [id], onDelete: Restrict)
+  creator            User                     @relation("AssessmentCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+  reviewer           User?                    @relation("AssessmentReviewedBy", fields: [reviewedBy], references: [id], onDelete: SetNull)
+  responses          AssessmentResponse[]
+  domainResults      AssessmentDomainResult[]
+  reports            Report[]
+
+  @@index([schoolId])
   @@index([studentId])
-  @@index([protocolId])
+  @@index([assessmentTemplateId])
+  @@index([createdBy])
+  @@index([reviewedBy])
+  @@map("student_assessments")
 }
 
 // ============================================================
-// AssessmentResponse — One Recorded Answer per Question
+// 17. assessment_responses — Item-Level Responses
 // ============================================================
 
 model AssessmentResponse {
-  id           String             @id @default(uuid())
-  assessmentId String
-  assessment   Assessment         @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
-  questionId   String
-  question     AssessmentQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
-  response     Json // Flexible: number (Likert), boolean, string, array
-  createdAt    DateTime           @default(now())
-  updatedAt    DateTime           @updatedAt
+  id                  Int      @id @default(autoincrement())
+  studentAssessmentId Int      @map("student_assessment_id")
+  questionId          Int      @map("question_id")
+  selectedOptionId    Int?     @map("selected_option_id")
+  textResponse        String?  @map("text_response") @db.Text
+  score               Decimal? @db.Decimal(5, 2)
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamp(6)
 
-  @@unique([assessmentId, questionId]) // One answer per question per session
+  studentAssessment StudentAssessment  @relation(fields: [studentAssessmentId], references: [id], onDelete: Cascade)
+  question          AssessmentQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  selectedOption    AssessmentOption?  @relation(fields: [selectedOptionId], references: [id], onDelete: SetNull)
+
+  @@unique([studentAssessmentId, questionId])
+  @@index([studentAssessmentId])
+  @@index([questionId])
+  @@index([selectedOptionId])
+  @@map("assessment_responses")
 }
 
 // ============================================================
-// AssessmentResult — Computed Outcome of a Completed Session
+// 18. assessment_domain_results — Aggregated Domain Outcomes
 // ============================================================
 
-model AssessmentResult {
-  id            String     @id @default(uuid())
-  assessmentId  String     @unique // One result per assessment session
-  assessment    Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
-  overallScore  Float
-  status        String // e.g., 'Screening Result'
-  domainResults Json // [{ name, score, maxScore, status }] — historical snapshot
-  aiSummary     String? // Reserved for Phase 3
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
+model AssessmentDomainResult {
+  id                  Int     @id @default(autoincrement())
+  studentAssessmentId Int     @map("student_assessment_id")
+  domainId            Int     @map("domain_id")
+  score               Decimal @db.Decimal(5, 2)
+  maxScore            Decimal @map("max_score") @db.Decimal(5, 2)
+  resultLabel         String? @map("result_label") @db.VarChar(100)
+  attentionLevel      String? @map("attention_level") @db.VarChar(50)
+
+  studentAssessment StudentAssessment @relation(fields: [studentAssessmentId], references: [id], onDelete: Cascade)
+  domain            AssessmentDomain  @relation(fields: [domainId], references: [id], onDelete: Cascade)
+
+  @@unique([studentAssessmentId, domainId])
+  @@index([studentAssessmentId])
+  @@index([domainId])
+  @@map("assessment_domain_results")
 }
 
 // ============================================================
-// Report — Cohort or Student-Level Reports
+// 19. reports — Student / Class / Grade Reports Header
 // ============================================================
 
 model Report {
-  id          String       @id @default(uuid())
-  schoolId    String
-  school      School       @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  studentId   String? // Null = cohort/school-level report
-  student     Student?     @relation(fields: [studentId], references: [id], onDelete: SetNull)
-  createdById String?
-  createdBy   User?        @relation("ReportCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  status      ReportStatus @default(DRAFT)
-  title       String
-  content     Json? // Structured report body — may become rich text in later phases
-  finalizedAt DateTime?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  id                Int      @id @default(autoincrement())
+  schoolId          Int      @map("school_id")
+  studentId         Int?     @map("student_id")
+  assessmentId      Int?     @map("assessment_id")
+  reportType        String   @map("report_type") @db.VarChar(30) // STUDENT, CLASS, GRADE
+  title             String   @db.VarChar(255)
+  status            String   @default("DRAFT") @db.VarChar(30)
+  classId           Int?     @map("class_id")
+  sectionId         Int?     @map("section_id")
+  academicSessionId Int?     @map("academic_session_id")
+  generatedBy       Int      @map("generated_by")
+  generatedAt       DateTime @default(now()) @map("generated_at") @db.Timestamp(6)
+  fileUrl           String?  @map("file_url") @db.VarChar(500)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
 
-  @@index([studentId])
+  school          School             @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  student         Student?           @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  assessment      StudentAssessment? @relation(fields: [assessmentId], references: [id], onDelete: SetNull)
+  class           Class?             @relation(fields: [classId], references: [id], onDelete: SetNull)
+  section         Section?           @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  academicSession AcademicSession?   @relation(fields: [academicSessionId], references: [id], onDelete: SetNull)
+  generator       User               @relation("ReportGeneratedBy", fields: [generatedBy], references: [id], onDelete: Restrict)
+  snapshots       ReportSnapshot[]
+
   @@index([schoolId])
+  @@index([studentId])
+  @@index([assessmentId])
+  @@index([classId])
+  @@index([sectionId])
+  @@index([academicSessionId])
+  @@index([generatedBy])
+  @@map("reports")
+}
+
+// ============================================================
+// 20. report_snapshots — Immutable Snapshot of Generated Reports
+// ============================================================
+
+model ReportSnapshot {
+  id          Int      @id @default(autoincrement())
+  reportId    Int      @map("report_id")
+  contentJson Json     @map("content_json") @db.JsonB
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  report Report @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId])
+  @@map("report_snapshots")
 }
