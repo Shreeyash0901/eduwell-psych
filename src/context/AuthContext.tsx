@@ -9,6 +9,7 @@ interface AuthContextType {
   isLoading: boolean;
   error: string | null;
   login: (email: string, password: string) => Promise<boolean>;
+  loginWithGoogle: (credential: string) => Promise<boolean>;
   logout: () => Promise<void>;
   checkAuth: () => Promise<void>;
   clearError: () => void;
@@ -139,6 +140,49 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const loginWithGoogle = async (credential: string): Promise<boolean> => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/auth/google', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ credential }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        const errorMessage = data.error || 'Google authentication failed.';
+        setError(errorMessage);
+        return false;
+      }
+
+      const loggedInUser: UserSession = {
+        id: String(data.user.id),
+        name: data.user.name,
+        email: data.user.email,
+        role: data.user.role as UserRole,
+        roleTitle: getRoleTitle(data.user.role),
+        avatarUrl: getRoleAvatar(data.user.role, data.user.email),
+        schoolName: data.user.schoolName || 'Westside Academy',
+      };
+
+      setUser(loggedInUser);
+      return true;
+    } catch (err: any) {
+      const errorMessage = err.message || 'Unable to connect to authentication server.';
+      setError(errorMessage);
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const logout = async (): Promise<void> => {
     try {
       await fetch('/api/auth/logout', {
@@ -162,6 +206,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isLoading,
         error,
         login,
+        loginWithGoogle,
         logout,
         checkAuth,
         clearError,

@@ -178,7 +178,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
     fetchStudents();
   }, [debouncedSearch, selectedClassId, selectedSectionId, selectedStatus, page]);
 
-  // Handle local optimistic add student
+  // Handle live student enrollment completion
   const handleStudentAdded = (newStudent: Student) => {
     if (onAddStudent) {
       onAddStudent(newStudent);
@@ -186,10 +186,17 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
     setIsAddStudentOpen(false);
     setSuccessNotification({
       title: 'Student Successfully Enrolled',
-      message: `${newStudent.name || newStudent.fullName} (${newStudent.studentId}) has been added to the directory roster.`,
+      message: `${newStudent.fullName || newStudent.name} (${newStudent.studentId}) has been added to the school roster.`,
     });
 
-    // Refresh roster from API
+    // Reset filters to page 1 to ensure the newly added student is visible
+    setSearch('');
+    setSelectedClassId('all');
+    setSelectedSectionId('all');
+    setSelectedStatus('all');
+    setPage(1);
+
+    // Refresh roster from PostgreSQL
     fetchStudents();
 
     setTimeout(() => {

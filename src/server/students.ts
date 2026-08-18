@@ -225,3 +225,289 @@ studentsRouter.get("/:id", async (req: AuthenticatedRequest, res: Response) => {
     });
   }
 });
+
+/**
+ * POST /api/students
+ * Enroll a new student into the authenticated school directory.
+ * Role requirement: ADMIN only.
+ */
+studentsRouter.post("/", async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const schoolId = req.user!.schoolId; // Derived strictly from verified auth token!
+    const userRole = (req.user!.role || "").toUpperCase();
+
+    // 1. Role Authorization check (ADMIN only)
+    if (userRole !== "ADMIN") {
+      return res.status(403).json({
+        success: false,
+        error: "Forbidden: Only school administrators are authorized to enroll new students.",
+      });
+    }
+
+    const {
+      studentId: rawStudentId,
+      admissionNo: rawAdmissionNo,
+      registrationNo: rawRegistrationNo,
+      firstName: rawFirstName,
+      middleName: rawMiddleName,
+      lastName: rawLastName,
+      fullName: rawFullName,
+      email: rawEmail,
+      phone: rawPhone,
+      gender: rawGender,
+      dateOfBirth: rawDateOfBirth,
+      classId: rawClassId,
+      sectionId: rawSectionId,
+      grade: rawGrade,
+      classGroup: rawClassGroup,
+      photoUrl: rawPhotoUrl,
+    } = req.body;
+
+    // 2. Validate names
+    const firstName = typeof rawFirstName === "string" ? rawFirstName.trim() : "";
+    const middleName = typeof rawMiddleName === "string" ? rawMiddleName.trim() : "";
+    const lastName = typeof rawLastName === "string" ? rawLastName.trim() : "";
+    let fullName = typeof rawFullName === "string" ? rawFullName.trim() : "";
+
+    if (!fullName) {
+      fullName = [firstName, middleName, lastName].filter(Boolean).join(" ");
+    }
+
+    if (!fullName && !firstName && !lastName) {
+      return res.status(400).json({
+        success: false,
+        error: "Student name is required.",
+      });
+    }
+
+    // 3. Validate / generate studentId
+    let studentId = typeof rawStudentId === "string" ? rawStudentId.trim() : "";
+    if (!studentId) {
+      const count = await prisma.student.count({ where: { schoolId } });
+      studentId = `STU-${1001 + count}`;
+    }
+
+    // Check duplicate studentId
+    const existingStudentId = await prisma.student.findUnique({
+      where: {
+        schoolId_studentId: {
+          schoolId,
+          studentId,
+        },
+      },
+    });
+
+    if (existingStudentId) {
+      return res.status(409).json({
+        success: false,
+        error: `A student with ID '${studentId}' already exists in your school directory.`,
+      });
+    }
+
+    // 4. Validate admissionNo / registrationNo uniqueness if provided
+    const admissionNo = typeof rawAdmissionNo === "string" && rawAdmissionNo.trim() ? rawAdmissionNo.trim() : null;
+    const registrationNo = typeof rawRegistrationNo === "string" && rawRegistrationNo.trim() ? rawRegistrationNo.trim() : null;
+
+    if (admissionNo) {
+      const dupAdmission = await prisma.student.findFirst({
+        where: { schoolId, admissionNo },
+      });
+      if (dupAdmission) {
+        return res.status(409).json({
+          success: false,
+          error: `A student with admission number '${admissionNo}' already exists in your school.`,
+        });
+      }
+    }
+
+    if (registrationNo) {
+      const dupRegistration = await prisma.student.findFirst({
+        where: { schoolId, registrationNo },
+      });
+      if (dupRegistration) {
+        return res.status(409).json({
+          success: false,
+          error: `A student with registration number '${registrationNo}' already exists in your school.`,
+        });
+      }
+    }
+
+    // 5. Validate Date of Birth if provided
+    let parsedDob: Date | null = null;
+    if (rawDateOfBirth) {
+      parsedDob = new Date(rawDateOfBirth);
+      if (isNaN(parsedDob.getTime())) {
+        return res.status(400).json({
+          success: false,
+          error: "Invalid date of birth format.",
+        });
+      }
+    }
+
+    // 6. Validate classId and sectionId
+    let classId: number | null = null;
+    let sectionId: number | null = null;
+
+    if (rawClassId !== undefined && rawClassId !== null && rawClassId !== "") {
+      const parsedClassId = parseInt(String(rawClassId), 10);
+      if (isNaN(parsedClassId)) {
+        return res.status(400).json({
+          success: false,
+          error: "Invalid classId format.",
+        });
+      }
+
+      const existingClass = await prisma.class.findFirst({
+        where: { id: parsedClassId, schoolId, isActive: true },
+      });
+
+      if (!existingClass) {
+        return res.status(400).json({
+          success: false,
+          error: "Selected class does not exist or does not belong to your school.",
+        });
+      }
+      classId = existingClass.id;
+    } else if (typeof rawGrade === "string" && rawGrade.trim()) {
+      const existingClass = await prisma.class.findFirst({
+        where: { schoolId, name: { contains: rawGrade.trim(), mode: "insensitive" }, isActive: true },
+      });
+      if (existingClass) {
+        classId = existingClass.id;
+      }
+    }
+
+    if (rawSectionId !== undefined && rawSectionId !== null && rawSectionId !== "") {
+      const parsedSectionId = parseInt(String(rawSectionId), 10);
+      if (isNaN(parsedSectionId)) {
+        return res.status(400).json({
+          success: false,
+          error: "Invalid sectionId format.",
+        });
+      }
+
+      const existingSection = await prisma.section.findFirst({
+        where: { id: parsedSectionId, class: { schoolId }, isActive: true },
+      });
+
+      if (!existingSection) {
+        return res.status(400).json({
+          success: false,
+          error: "Selected section does not exist or does not belong to your school.",
+        });
+      }
+
+      if (classId && existingSection.classId !== classId) {
+        return res.status(400).json({
+          success: false,
+          error: "The selected section does not belong to the selected class.",
+        });
+      }
+
+      sectionId = existingSection.id;
+      if (!classId) {
+        classId = existingSection.classId;
+      }
+    } else if (typeof rawClassGroup === "string" && rawClassGroup.trim()) {
+      const cleanGroup = rawClassGroup.replace(/section/i, "").trim();
+      const existingSection = await prisma.section.findFirst({
+        where: {
+          class: { schoolId, ...(classId ? { id: classId } : {}) },
+          name: { contains: cleanGroup, mode: "insensitive" },
+          isActive: true,
+        },
+      });
+      if (existingSection) {
+        sectionId = existingSection.id;
+        if (!classId) classId = existingSection.classId;
+      }
+    }
+
+    // 7. Validate email format if provided
+    const email = typeof rawEmail === "string" && rawEmail.trim() ? rawEmail.trim().toLowerCase() : null;
+    if (email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return res.status(400).json({
+          success: false,
+          error: "Invalid email address format.",
+        });
+      }
+    }
+
+    const phone = typeof rawPhone === "string" && rawPhone.trim() ? rawPhone.trim() : null;
+    const gender = typeof rawGender === "string" && rawGender.trim() ? rawGender.trim() : null;
+    const photoUrl = typeof rawPhotoUrl === "string" && rawPhotoUrl.trim() ? rawPhotoUrl.trim() : null;
+
+    // 8. Create Student Record in PostgreSQL
+    const createdStudent = await prisma.student.create({
+      data: {
+        schoolId, // Derived strictly from verified JWT
+        studentId,
+        admissionNo,
+        registrationNo,
+        firstName: firstName || null,
+        middleName: middleName || null,
+        lastName: lastName || null,
+        fullName: fullName || `${firstName} ${lastName}`.trim() || studentId,
+        email,
+        phone,
+        gender,
+        dateOfBirth: parsedDob,
+        classId,
+        sectionId,
+        photoUrl,
+        source: "MANUAL",
+        isActive: true,
+      },
+      include: {
+        class: { select: { id: true, name: true } },
+        section: { select: { id: true, name: true } },
+      },
+    });
+
+    const currentSession = await prisma.academicSession.findFirst({
+      where: { schoolId, isCurrent: true },
+      select: { id: true, name: true },
+    });
+
+    const safeStudent = {
+      id: createdStudent.id,
+      studentId: createdStudent.studentId,
+      externalStudentId: createdStudent.externalStudentId,
+      admissionNo: createdStudent.admissionNo,
+      registrationNo: createdStudent.registrationNo,
+      firstName: createdStudent.firstName,
+      middleName: createdStudent.middleName,
+      lastName: createdStudent.lastName,
+      fullName: createdStudent.fullName,
+      name: createdStudent.fullName,
+      email: createdStudent.email,
+      phone: createdStudent.phone,
+      gender: createdStudent.gender,
+      dateOfBirth: createdStudent.dateOfBirth ? createdStudent.dateOfBirth.toISOString().split("T")[0] : null,
+      classId: createdStudent.classId,
+      className: createdStudent.class?.name || null,
+      sectionId: createdStudent.sectionId,
+      sectionName: createdStudent.section?.name || null,
+      academicSessionId: currentSession?.id || null,
+      academicSessionName: currentSession?.name || null,
+      photoUrl: createdStudent.photoUrl,
+      source: createdStudent.source,
+      isActive: createdStudent.isActive,
+      lastSyncedAt: createdStudent.lastSyncedAt ? createdStudent.lastSyncedAt.toISOString() : null,
+    };
+
+    return res.status(201).json({
+      success: true,
+      message: "Student enrolled successfully.",
+      student: safeStudent,
+    });
+  } catch (error) {
+    console.error("[STUDENTS_API] POST /api/students error:", error);
+    return res.status(500).json({
+      success: false,
+      error: "An error occurred while enrolling the student. Please try again.",
+    });
+  }
+});

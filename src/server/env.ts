@@ -11,6 +11,7 @@ export interface ServerConfig {
   jwtSecret: string;
   jwtExpiresIn: string;
   cookieName: string;
+  googleClientId: string;
   isProduction: boolean;
 }
 
@@ -35,6 +36,7 @@ export function validateEnvironment(): ServerConfig {
 
   const jwtExpiresIn = process.env.JWT_EXPIRES_IN || "7d";
   const cookieName = "eduwell_token";
+  const googleClientId = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID || "";
 
   return {
     port,
@@ -42,6 +44,7 @@ export function validateEnvironment(): ServerConfig {
     jwtSecret,
     jwtExpiresIn,
     cookieName,
+    googleClientId,
     isProduction,
   };
 }
