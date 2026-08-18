@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { toast } from 'sonner';
 import { Student, ActiveTab, ObservationRecord } from '../../types';
 import {
   ArrowLeft,
@@ -32,7 +33,6 @@ export const TeacherAddConcernView: React.FC<TeacherAddConcernViewProps> = ({
   const [selectedStudentId, setSelectedStudentId] = useState<string>(students[0]?.id || 's2');
   const [selectedCategory, setSelectedCategory] = useState<ConcernCategory>('Attention');
   const [observationDetails, setObservationDetails] = useState('');
-  const [submittedToast, setSubmittedToast] = useState(false);
 
   const selectedStudent = students.find((s) => s.id === selectedStudentId) || students[0];
 
@@ -75,7 +75,7 @@ export const TeacherAddConcernView: React.FC<TeacherAddConcernViewProps> = ({
     };
 
     onSubmitObservation(newObs);
-    setSubmittedToast(true);
+    toast.success('Observation recorded successfully!');
     setTimeout(() => {
       setActiveTab('observations');
     }, 900);
@@ -83,13 +83,6 @@ export const TeacherAddConcernView: React.FC<TeacherAddConcernViewProps> = ({
 
   return (
     <div className="p-6 sm:p-8 max-w-4xl mx-auto space-y-6 animate-in fade-in duration-150">
-      {/* Toast Notification */}
-      {submittedToast && (
-        <div className="fixed top-5 right-5 z-50 bg-blue-700 text-white px-5 py-3 rounded-xl shadow-lg text-xs font-bold flex items-center gap-2 animate-in slide-in-from-top duration-200">
-          <span>Observation recorded successfully!</span>
-        </div>
-      )}
-
       {/* Header */}
       <div>
         <button

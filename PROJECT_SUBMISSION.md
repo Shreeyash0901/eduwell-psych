@@ -3,7 +3,7 @@
 **Repository:** [https://github.com/Shreeyash0901/eduwell-psych.git](https://github.com/Shreeyash0901/eduwell-psych.git)  
 **Live Demo:** [https://shreeyash0901.github.io/eduwell-psych/](https://shreeyash0901.github.io/eduwell-psych/)  
 **Status:** Completed & Production Verified  
-**Tech Stack:** React 19, TypeScript, Vite, Tailwind CSS, Lucide Icons, Express + Prisma ORM Backend  
+**Tech Stack:** React 19, TypeScript, Vite, Tailwind CSS, Lucide Icons, Sonner (Toasts), Express + Prisma ORM Backend  
 
 ---
 
@@ -11,7 +11,7 @@
 
 EduWell Psych is a comprehensive school psychology and student wellness monitoring platform designed to streamline student behavioral tracking, standardized wellness assessments, psychological evaluation reports, and inter-role collaboration between School Psychologists, Educators, and Parents.
 
-This frontend MVP is built to exact Figma/UI specifications with full responsive fidelity, complete state management, rich data visualizations, and multi-role workflows.
+This frontend MVP is built to exact Figma/UI specifications with full responsive fidelity, complete state management, rich data visualizations, privacy-safe toast notifications (`sonner`), and multi-role workflows.
 
 ---
 
@@ -89,12 +89,16 @@ This frontend MVP is built to exact Figma/UI specifications with full responsive
 
 ---
 
-### F. Administration & Settings
+### F. Administration & UI System
 15. **Settings Page**
     - **Route:** `/#settings`
     - Configuration panels for *School Profile*, *Academic Calendar*, and *Data Privacy / FERPA Compliance*.
 16. **Role Switcher**
     - Header quick toggle between **Psychologist View** and **Teacher View**.
+17. **Global Toast Notification System (`sonner`)**
+    - Privacy-safe, concise status toasts across student enrollment, observation filing, assessment completion, report generation/export, parent feedback submission, link copying, and authentication.
+18. **Reusable UI Component Library (`src/components/ui/`)**
+    - Modular, accessible components: `Button`, `Modal`, `FormField`, `Input`, `Select`, and `Textarea`.
 
 ---
 
@@ -104,6 +108,8 @@ This frontend MVP is built to exact Figma/UI specifications with full responsive
 | :--- | :---: | :--- |
 | **TypeScript Compilation** | ✅ Passed | `npx tsc --noEmit` exited with 0 errors |
 | **Production Build** | ✅ Passed | `npm run build` compiled cleanly into `dist/` |
+| **Toast Notifications** | ✅ Passed | Global `sonner` Toaster with privacy-safe user alerts |
+| **Component Architecture** | ✅ Passed | Phase 1 reusable UI library (`src/components/ui/`) |
 | **Routing Resilience** | ✅ Passed | Universal routing supporting paths, subpaths (`/eduwell-psych/`), hash links (`#tab`), and search params (`?tab=...`) |
 | **Asset Resolution** | ✅ Passed | Configured relative base (`base: './'`) for standalone and GitHub Pages hosting |
 

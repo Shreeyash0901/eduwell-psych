@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { toast } from 'sonner';
 import { ActiveTab } from '../../types';
 import {
   Building2,
@@ -41,12 +42,8 @@ export const SettingsView: React.FC<SettingsViewProps> = () => {
   const [anonymizeExports, setAnonymizeExports] = useState(true);
   const [require2FA, setRequire2FA] = useState(true);
 
-  // Toast
-  const [savedToast, setSavedToast] = useState(false);
-
   const handleSaveChanges = () => {
-    setSavedToast(true);
-    setTimeout(() => setSavedToast(false), 3000);
+    toast.success('Settings saved successfully!');
   };
 
   const handleReset = () => {
@@ -72,14 +69,6 @@ export const SettingsView: React.FC<SettingsViewProps> = () => {
 
   return (
     <div className="p-6 sm:p-8 max-w-7xl mx-auto space-y-6 animate-in fade-in duration-150">
-      {/* Toast Notification */}
-      {savedToast && (
-        <div className="fixed top-20 right-8 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-xl flex items-center gap-3 text-xs font-semibold z-50 animate-in slide-in-from-top-4 duration-200">
-          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-          <span>Settings saved successfully!</span>
-        </div>
-      )}
-
       {/* Page Header */}
       <div>
         <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">Settings</h1>

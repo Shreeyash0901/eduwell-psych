@@ -20,6 +20,7 @@ import { AssessmentSetupView } from './components/assessments/AssessmentSetupVie
 import { LoginView } from './components/auth/LoginView';
 import { NewObservationModal } from './components/observations/NewObservationModal';
 import { NewAssessmentModal } from './components/assessments/NewAssessmentModal';
+import { Toaster } from 'sonner';
 
 import {
   initialStudents,
@@ -298,6 +299,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-100/60 font-sans text-slate-800 flex antialiased">
+      <Toaster position="top-right" richColors />
       {/* Left Sidebar Navigation */}
       <Sidebar
         activeTab={activeTab}

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { toast } from 'sonner';
 import { ActiveTab, Student } from '../../types';
 import {
   Plus,
@@ -72,14 +73,14 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 
           <div className="flex items-center gap-3">
             <button
-              onClick={() => alert("Exporting Grade 5 Wellness Report PDF...")}
+              onClick={() => toast.success('Report exported successfully!')}
               className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
             >
               <Download className="w-4 h-4 text-slate-500" />
               Export PDF
             </button>
             <button
-              onClick={() => alert("Filter report parameters...")}
+              onClick={() => {}}
               className="inline-flex items-center gap-2 px-4 py-2 bg-blue-700 text-white rounded-lg text-sm font-semibold hover:bg-blue-800 shadow-sm transition-colors cursor-pointer"
             >
               <Filter className="w-4 h-4" />

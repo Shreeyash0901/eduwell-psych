@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { toast } from 'sonner';
 import { AssessmentProtocol, Student, ActiveTab } from '../../types';
 import { ArrowLeft, ArrowRight, CheckCircle2 } from 'lucide-react';
 
@@ -55,6 +56,7 @@ export const AssessmentRunnerView: React.FC<AssessmentRunnerViewProps> = ({
     if (currentIndex < totalQuestions - 1) {
       setCurrentIndex(currentIndex + 1);
     } else {
+      toast.success('Assessment completed successfully!');
       onCompleteAssessment(currentStudent, answers);
     }
   };

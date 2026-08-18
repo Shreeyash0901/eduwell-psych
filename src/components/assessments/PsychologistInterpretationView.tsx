@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { toast } from 'sonner';
 import { ActiveTab, Student, AssessmentResult } from '../../types';
 import {
   Save,
@@ -43,11 +44,9 @@ export const PsychologistInterpretationView: React.FC<PsychologistInterpretation
 }) => {
   const [clinicalInterpretation, setClinicalInterpretation] = useState('');
   const [recommendations, setRecommendations] = useState('');
-  const [savedToast, setSavedToast] = useState(false);
 
   const handleSaveDraft = () => {
-    setSavedToast(true);
-    setTimeout(() => setSavedToast(false), 3000);
+    toast.success('Draft interpretation saved successfully!');
   };
 
   const handleGenerateReport = () => {
@@ -85,14 +84,6 @@ export const PsychologistInterpretationView: React.FC<PsychologistInterpretation
 
   return (
     <div className="p-6 sm:p-8 max-w-7xl mx-auto space-y-6 animate-in fade-in duration-150">
-      {/* Toast Notification */}
-      {savedToast && (
-        <div className="fixed top-20 right-8 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-xl flex items-center gap-3 text-xs font-semibold z-50 animate-in slide-in-from-top-4 duration-200">
-          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-          <span>Draft interpretation saved for {studentName}!</span>
-        </div>
-      )}
-
       {/* Header & Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>

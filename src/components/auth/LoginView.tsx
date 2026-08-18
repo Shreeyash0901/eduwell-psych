@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { toast } from 'sonner';
 import { UserSession, UserRole } from '../../types';
 import { demoUsers } from '../../data/mockData';
 import {
@@ -42,6 +43,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
 
     if (!email.trim()) {
       setErrorMessage('Please enter an email address.');
+      toast.error('Please enter an email address.');
       return;
     }
 
@@ -54,6 +56,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
       );
 
       if (matched) {
+        toast.success('Signed in successfully!');
         onLogin(matched);
       } else {
         // Fallback: deduce role from email or default to psychologist
@@ -79,6 +82,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
           avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=120',
           schoolName: 'Lincoln High School (District 4)',
         };
+        toast.success('Signed in successfully!');
         onLogin(customUser);
       }
       setIsLoading(false);

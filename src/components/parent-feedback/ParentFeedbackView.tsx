@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { toast } from 'sonner';
 import { Student, ObservationRecord, ActiveTab } from '../../types';
 import {
   Home,
@@ -47,7 +48,7 @@ export const ParentFeedbackView: React.FC<ParentFeedbackViewProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!noticedAtHome.trim()) {
-      alert('Please describe what you have noticed at home before submitting.');
+      toast.error('Please describe what you have noticed at home before submitting.');
       return;
     }
 
@@ -84,6 +85,7 @@ export const ParentFeedbackView: React.FC<ParentFeedbackViewProps> = ({
     };
 
     onSubmitFeedback(newObservation);
+    toast.success('Feedback submitted successfully!');
     setIsSubmitted(true);
   };
 
@@ -91,6 +93,7 @@ export const ParentFeedbackView: React.FC<ParentFeedbackViewProps> = ({
     const url = window.location.origin + '/parent-feedback';
     navigator.clipboard.writeText(url);
     setCopiedLink(true);
+    toast.success('Feedback link copied to clipboard!');
     setTimeout(() => setCopiedLink(false), 2500);
   };
 
