@@ -30,11 +30,11 @@ export const TeacherAddConcernView: React.FC<TeacherAddConcernViewProps> = ({
   onCancel,
   setActiveTab,
 }) => {
-  const [selectedStudentId, setSelectedStudentId] = useState<string>(students[0]?.id || 's2');
+  const [selectedStudentId, setSelectedStudentId] = useState<string | number>(students[0]?.id || 's2');
   const [selectedCategory, setSelectedCategory] = useState<ConcernCategory>('Attention');
   const [observationDetails, setObservationDetails] = useState('');
 
-  const selectedStudent = students.find((s) => s.id === selectedStudentId) || students[0];
+  const selectedStudent = students.find((s) => String(s.id) === String(selectedStudentId)) || students[0];
 
   const categories: { id: ConcernCategory; label: string; icon: React.ReactNode }[] = [
     { id: 'Attention', label: 'Attention', icon: <Target className="w-5 h-5" /> },

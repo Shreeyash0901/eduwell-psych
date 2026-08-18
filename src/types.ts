@@ -34,25 +34,46 @@ export type WellnessStatus = 'Normal' | 'Monitor' | 'Attention Required';
 export type IepStatus = 'No IEP' | 'IEP Active' | '504 Plan Active' | 'Under Evaluation';
 
 export interface Student {
-  id: string;
+  id: number | string;
   studentId: string;
-  name: string;
-  firstName?: string;
-  lastName?: string;
-  dateOfBirth?: string;
-  grade: string;
-  classGroup: string;
-  age: number;
-  homeroom: string;
+  externalStudentId?: string | null;
+  admissionNo?: string | null;
+  registrationNo?: string | null;
+  firstName?: string | null;
+  middleName?: string | null;
+  lastName?: string | null;
+  fullName?: string | null;
+  name?: string;
+  email?: string | null;
+  phone?: string | null;
+  alternatePhone?: string | null;
+  gender?: string | null;
+  dateOfBirth?: string | null;
+  classId?: number | null;
+  className?: string | null;
+  sectionId?: number | null;
+  sectionName?: string | null;
+  academicSessionId?: number | null;
+  academicSessionName?: string | null;
+  photoUrl?: string | null;
+  source?: string;
+  isActive?: boolean;
+  lastSyncedAt?: string | null;
+
+  // Display/Legacy fields used across views
+  grade?: string;
+  classGroup?: string;
+  age?: number;
+  homeroom?: string;
   guardianName?: string;
   guardianContact?: string;
-  iepStatus: IepStatus | string;
-  priorObsCount: number;
-  status: WellnessStatus;
+  iepStatus?: IepStatus | string;
+  priorObsCount?: number;
+  status?: WellnessStatus;
   primaryDomainFlag?: string;
   scoreFlag?: number;
   avatarUrl?: string;
-  domainScores: {
+  domainScores?: {
     emotionalRegulation: number;
     socialInteraction: number;
     academicAnxiety: number;
@@ -60,6 +81,19 @@ export interface Student {
     selfConfidence?: number;
     schoolAdjustment?: number;
   };
+}
+
+export interface PaginationMeta {
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export interface StudentFilterLookups {
+  classes: { id: number; name: string }[];
+  sections: { id: number; name: string; classId: number }[];
+  academicSessions: { id: number; name: string; isCurrent: boolean }[];
 }
 
 export interface ObservationRecord {

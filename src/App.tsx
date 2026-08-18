@@ -41,8 +41,9 @@ import {
 } from './types';
 
 const getTabFromPath = (): ActiveTab => {
-  // Check hash first (e.g. #/teacher-add-concern or #teacher_add_concern)
-  const hash = window.location.hash.replace(/^#\/?/, '').toLowerCase().trim();
+  // Check hash first (e.g. #/teacher-add-concern or #student_profile?id=1)
+  const rawHash = window.location.hash.replace(/^#\/?/, '').toLowerCase().trim();
+  const hash = rawHash.split('?')[0].split('/')[0];
   
   // Check URL query parameters (e.g. ?tab=teacher_add_concern)
   const urlParams = new URLSearchParams(window.location.search);
@@ -89,6 +90,11 @@ function MainApplication() {
   const [activeTab, setActiveTabState] = useState<ActiveTab>(() => getTabFromPath());
   const [students, setStudents] = useState<Student[]>(initialStudents);
   const [selectedProfileStudent, setSelectedProfileStudent] = useState<Student>(initialStudents[0]);
+  const [selectedProfileStudentId, setSelectedProfileStudentId] = useState<string | number | null>(() => {
+    const hash = window.location.hash;
+    const match = hash.match(/[#?]id=([^&]+)/) || hash.match(/#student_profile\/([^?&]+)/);
+    return match ? match[1] : null;
+  });
 
   const setActiveTab = (tab: ActiveTab) => {
     setActiveTabState(tab);
@@ -489,12 +495,13 @@ function MainApplication() {
 
           {activeTab === 'students' && (
             <StudentsView
-              students={students}
               userRole={currentUser?.role}
               onAddStudent={handleAddStudent}
               onSelectStudent={handleSelectStudentFromRoster}
               onOpenFullProfile={(s) => {
                 setSelectedProfileStudent(s);
+                setSelectedProfileStudentId(s.id);
+                window.location.hash = `#student_profile?id=${s.id}`;
                 setActiveTab('student_profile');
               }}
               setActiveTab={setActiveTab}
@@ -504,18 +511,19 @@ function MainApplication() {
           {activeTab === 'student_profile' && (
             <StudentProfileView
               student={selectedProfileStudent}
+              studentId={selectedProfileStudentId || selectedProfileStudent?.id}
               observations={observations}
               onOpenNewAssessment={(studentName) => {
                 setSelectedProtocol(protocols[0]);
                 setActiveAssessmentStudent(
-                  studentName || selectedProfileStudent?.name || initialStudents[0].name
+                  studentName || selectedProfileStudent?.fullName || selectedProfileStudent?.name || 'Alex Morgan'
                 );
                 setActiveTab('assessment_setup');
               }}
               onGenerateReport={(studentName) => {
                 const target =
-                  students.find((s) => s.name === studentName) || selectedProfileStudent;
-                setActiveAssessmentStudent(target.name);
+                  students.find((s) => s.fullName === studentName || s.name === studentName) || selectedProfileStudent;
+                setActiveAssessmentStudent(target.fullName || target.name || studentName);
                 setPsychologistReportData({});
                 setActiveTab('student_report_preview');
               }}

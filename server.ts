@@ -7,6 +7,8 @@ import dotenv from "dotenv";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import { authRouter } from "./src/server/auth";
+import { studentsRouter } from "./src/server/students";
+import { lookupsRouter } from "./src/server/lookups";
 import { serverConfig } from "./src/server/env";
 
 dotenv.config();
@@ -38,8 +40,10 @@ app.use(cookieParser());
 // JSON Body Parser
 app.use(express.json());
 
-// Mount Authentication Router
+// Mount API Routers
 app.use("/api/auth", authRouter);
+app.use("/api/students", studentsRouter);
+app.use("/api/lookups", lookupsRouter);
 
 // Initialize Gemini API client on server
 const getGeminiClient = () => {
