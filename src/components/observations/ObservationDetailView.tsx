@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { toast } from 'sonner';
 import { ObservationRecord, ActiveTab } from '../../types';
 import {
   ChevronLeft,
@@ -13,37 +14,109 @@ import {
 } from 'lucide-react';
 
 interface ObservationDetailViewProps {
-  observation: ObservationRecord;
+  observationId: string;
+  refreshKey: number;
+  canUpdate: boolean;
   onBack: () => void;
   onStartAssessment: (studentName: string) => void;
-  onSaveNotes: (id: string, notes: string) => void;
-  onUpdateStatus: (id: string, status: 'Reviewed' | 'Pending Review' | 'Assessed') => void;
   setActiveTab: (tab: ActiveTab) => void;
 }
 
 export const ObservationDetailView: React.FC<ObservationDetailViewProps> = ({
-  observation,
+  observationId,
+  refreshKey,
+  canUpdate,
   onBack,
   onStartAssessment,
-  onSaveNotes,
-  onUpdateStatus,
 }) => {
-  const [notes, setNotes] = useState<string>(observation.psychologistNotes || '');
-  const [aiAnalysis, setAiAnalysis] = useState<string>(observation.aiAnalysis || '');
+  const [observation, setObservation] = useState<ObservationRecord | null>(null);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [notes, setNotes] = useState<string>('');
+  const [aiAnalysis, setAiAnalysis] = useState<string>('');
   const [isGeneratingAi, setIsGeneratingAi] = useState<boolean>(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
 
-  const handleSave = () => {
-    onSaveNotes(observation.id, notes);
-    alert('Psychologist internal notes saved successfully.');
+  const loadObservation = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const res = await fetch(`/api/observations/${observationId}`, {
+        credentials: 'include',
+      });
+      const data = await res.json();
+      if (data.success && data.observation) {
+        setObservation(data.observation);
+        setNotes(data.observation.psychologistNotes || '');
+        setAiAnalysis(data.observation.aiAnalysis || '');
+      } else {
+        setLoadError(data.error || 'Observation record not found.');
+      }
+    } catch (err: any) {
+      setLoadError(err.message || 'Failed to load observation details.');
+    } finally {
+      setLoading(false);
+    }
+  }, [observationId]);
+
+  useEffect(() => {
+    loadObservation();
+  }, [loadObservation, refreshKey]);
+
+  const handleSave = async () => {
+    if (!observation) return;
+    setIsSaving(true);
+    try {
+      const res = await fetch(`/api/observations/${observation.id}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ psychologistNotes: notes }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setObservation((prev) => (prev ? { ...prev, psychologistNotes: notes } : prev));
+        toast.success('Psychologist internal notes saved successfully.');
+      } else {
+        toast.error(data.error || 'Failed to save notes.');
+      }
+    } catch (err: any) {
+      toast.error('Failed to save notes: ' + err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleUpdateStatus = async (status: 'Reviewed' | 'Pending Review' | 'Assessed') => {
+    if (!observation) return;
+    try {
+      const res = await fetch(`/api/observations/${observation.id}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setObservation((prev) => (prev ? { ...prev, status } : prev));
+        toast.success(`Observation marked as ${status}.`);
+      } else {
+        toast.error(data.error || 'Failed to update status.');
+      }
+    } catch (err: any) {
+      toast.error('Failed to update status: ' + err.message);
+    }
   };
 
   const handleGenerateAiAnalysis = async () => {
+    if (!observation) return;
     setIsGeneratingAi(true);
     setAiError(null);
     try {
       const res = await fetch('/api/gemini/analyze-observation', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           studentName: observation.studentName,
@@ -73,6 +146,35 @@ export const ObservationDetailView: React.FC<ObservationDetailViewProps> = ({
       .join('')
       .toUpperCase();
   };
+
+  if (loading) {
+    return (
+      <div className="p-8 max-w-7xl mx-auto">
+        <div className="flex items-center justify-center gap-2 py-24 text-xs text-slate-500 font-medium">
+          <Loader2 className="w-4 h-4 animate-spin text-blue-700" />
+          Loading observation record...
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError || !observation) {
+    return (
+      <div className="p-8 max-w-7xl mx-auto">
+        <button
+          onClick={onBack}
+          className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-blue-700 transition-colors mb-4"
+        >
+          <ChevronLeft className="w-3.5 h-3.5" />
+          Observations &gt; Back to List
+        </button>
+        <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span>{loadError}</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-6">
@@ -126,10 +228,10 @@ export const ObservationDetailView: React.FC<ObservationDetailViewProps> = ({
                 {observation.status}
               </span>
             </div>
-            {observation.status !== 'Reviewed' ? (
+            {canUpdate && observation.status !== 'Reviewed' ? (
               <button
-                onClick={() => onUpdateStatus(observation.id, 'Reviewed')}
-                className="w-full flex items-center justify-center gap-2 py-2 px-4 border border-blue-600 text-blue-700 hover:bg-blue-50 rounded-lg text-xs font-bold transition-colors"
+                onClick={() => handleUpdateStatus('Reviewed')}
+                className="w-full flex items-center justify-center gap-2 py-2 px-4 border border-blue-600 text-blue-700 hover:bg-blue-50 rounded-lg text-xs font-bold transition-colors cursor-pointer"
               >
                 <CheckCircle className="w-4 h-4" />
                 Mark as Reviewed
@@ -137,7 +239,9 @@ export const ObservationDetailView: React.FC<ObservationDetailViewProps> = ({
             ) : (
               <div className="text-xs text-emerald-700 font-semibold bg-emerald-50 p-2.5 rounded-lg flex items-center gap-2">
                 <CheckCircle className="w-4 h-4" />
-                Reviewed by Lead Psychologist
+                {observation.status === 'Reviewed'
+                  ? 'Reviewed by Lead Psychologist'
+                  : 'Status updates require psychologist access'}
               </div>
             )}
           </div>
@@ -162,17 +266,17 @@ export const ObservationDetailView: React.FC<ObservationDetailViewProps> = ({
 
             <div className="space-y-2.5 text-xs pt-2">
               <div className="flex items-center justify-between py-1.5 border-b border-slate-100">
-                <span className="text-slate-500 font-medium">Age</span>
-                <span className="font-bold text-slate-900">13</span>
+                <span className="text-slate-500 font-medium">Student ID</span>
+                <span className="font-bold text-slate-900">{observation.studentId}</span>
               </div>
               <div className="flex items-center justify-between py-1.5 border-b border-slate-100">
-                <span className="text-slate-500 font-medium">IEP Status</span>
-                <span className="font-bold text-slate-900">None Active</span>
+                <span className="text-slate-500 font-medium">Grade / Class</span>
+                <span className="font-bold text-slate-900">{observation.grade || observation.classGroup}</span>
               </div>
               <div className="flex items-center justify-between py-1.5">
-                <span className="text-slate-500 font-medium">Prior Obs. (Term)</span>
+                <span className="text-slate-500 font-medium">Record No.</span>
                 <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-bold">
-                  2
+                  {observation.recordNumber}
                 </span>
               </div>
             </div>
@@ -227,7 +331,7 @@ export const ObservationDetailView: React.FC<ObservationDetailViewProps> = ({
             <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
               Description of Concern
             </h3>
-            <div className="p-5 bg-blue-50/50 border border-blue-100 rounded-xl text-sm text-slate-800 leading-relaxed font-normal">
+            <div className="p-5 bg-blue-50/50 border border-blue-100 rounded-xl text-sm text-slate-800 leading-relaxed font-normal whitespace-pre-line">
               {observation.narrative}
             </div>
           </div>
@@ -265,7 +369,7 @@ export const ObservationDetailView: React.FC<ObservationDetailViewProps> = ({
               <button
                 onClick={handleGenerateAiAnalysis}
                 disabled={isGeneratingAi}
-                className="inline-flex items-center gap-2 px-3 py-1.5 bg-purple-50 text-purple-700 hover:bg-purple-100 rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
+                className="inline-flex items-center gap-2 px-3 py-1.5 bg-purple-50 text-purple-700 hover:bg-purple-100 rounded-lg text-xs font-bold transition-colors disabled:opacity-50 cursor-pointer"
               >
                 {isGeneratingAi ? (
                   <>
@@ -296,27 +400,30 @@ export const ObservationDetailView: React.FC<ObservationDetailViewProps> = ({
           </div>
 
           {/* Psychologist Internal Notes Form */}
-          <div className="pt-4 border-t border-slate-200/80 space-y-3">
-            <label className="block text-xs font-bold text-slate-900 uppercase tracking-wider">
-              Psychologist Notes (Internal)
-            </label>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={4}
-              placeholder="Add preliminary notes or analysis here before starting formal assessment..."
-              className="w-full p-4 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:bg-white resize-y"
-            ></textarea>
+          {canUpdate && (
+            <div className="pt-4 border-t border-slate-200/80 space-y-3">
+              <label className="block text-xs font-bold text-slate-900 uppercase tracking-wider">
+                Psychologist Notes (Internal)
+              </label>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={4}
+                placeholder="Add preliminary notes or analysis here before starting formal assessment..."
+                className="w-full p-4 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:bg-white resize-y"
+              ></textarea>
 
-            <div className="flex justify-end">
-              <button
-                onClick={handleSave}
-                className="px-5 py-2 bg-blue-100 text-blue-800 hover:bg-blue-200 rounded-lg text-xs font-bold transition-colors"
-              >
-                Save Notes
-              </button>
+              <div className="flex justify-end">
+                <button
+                  onClick={handleSave}
+                  disabled={isSaving}
+                  className="px-5 py-2 bg-blue-100 text-blue-800 hover:bg-blue-200 rounded-lg text-xs font-bold transition-colors disabled:opacity-60 cursor-pointer"
+                >
+                  {isSaving ? 'Saving...' : 'Save Notes'}
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>

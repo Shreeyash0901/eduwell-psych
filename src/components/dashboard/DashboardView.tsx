@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Student, ActiveTab, ObservationRecord } from '../../types';
+import React, { useState, useEffect } from 'react';
+import { Student, ActiveTab, ObservationRecord, UserSession } from '../../types';
 import {
   Users,
   AlertTriangle,
@@ -21,6 +21,7 @@ import {
 
 interface DashboardViewProps {
   students: Student[];
+  user?: UserSession | null;
   onSelectStudent: (s: Student) => void;
   onOpenNewAssessment: () => void;
   setActiveTab: (tab: ActiveTab) => void;
@@ -28,63 +29,89 @@ interface DashboardViewProps {
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
   students,
+  user,
   onSelectStudent,
   onOpenNewAssessment,
   setActiveTab,
 }) => {
   // Toggle between General Overview (Image 2) and Class Aggregate Report (Image 1)
   const [viewMode, setViewMode] = useState<'overview' | 'class_report'>('overview');
-  const [selectedClass, setSelectedClass] = useState('Grade 4, Class B');
+  const [selectedClass, setSelectedClass] = useState('Grade 4, Section 4A');
 
-  // Recent Student Concerns for Overview (from screenshot)
-  const recentConcerns = [
-    {
-      id: 'c1',
-      student: 'Leo Martinez',
-      class: '3B',
-      concern: 'Social Isolation',
-      date: 'Oct 24',
-      status: 'NEW',
-    },
-    {
-      id: 'c2',
-      student: 'Chloe Davis',
-      class: '5A',
-      concern: 'Attention Span',
-      date: 'Oct 23',
-      status: 'REVIEWED',
-    },
-    {
-      id: 'c3',
-      student: 'Samira Patel',
-      class: '2C',
-      concern: 'Anxiety (Testing)',
-      date: 'Oct 22',
-      status: 'NEW',
-    },
-  ];
+  const [loading, setLoading] = useState<boolean>(true);
+  const [stats, setStats] = useState({
+    totalStudents: 0,
+    newConcerns: 0,
+    activeAssessments: 0,
+    reportsCount: 0,
+  });
+  const [recentConcerns, setRecentConcerns] = useState<ObservationRecord[]>([]);
+  const [recentAssessments, setRecentAssessments] = useState<any[]>([]);
 
-  // Recent Assessments for Overview (from screenshot)
-  const recentAssessments = [
-    {
-      id: 'a1',
-      protocol: 'WISC-V',
-      date: 'Oct 25',
-      student: 'Julian Rossi',
-      progress: 65,
-      statusText: 'In Progress',
-      isComplete: false,
-    },
-    {
-      id: 'a2',
-      protocol: 'BASC-3',
-      date: 'Oct 20',
-      student: 'Aaliyah Jones',
-      progress: 100,
-      statusText: 'Complete',
-      isComplete: true,
-    },
-  ];
+  useEffect(() => {
+    let cancelled = false;
+    const fetchLiveDashboard = async () => {
+      setLoading(true);
+      try {
+        const [obsRes, studentsRes, reportsRes, templatesRes] = await Promise.all([
+          fetch('/api/observations?limit=5', { credentials: 'include' }),
+          fetch('/api/students?limit=100', { credentials: 'include' }),
+          fetch('/api/reports', { credentials: 'include' }),
+          fetch('/api/assessments/templates', { credentials: 'include' }),
+        ]);
+
+        const obsData = await obsRes.json();
+        const studentsData = await studentsRes.json();
+        const reportsData = await reportsRes.json();
+        const templatesData = await templatesRes.json();
+
+        if (!cancelled) {
+          const totalStudents = studentsData.success ? (studentsData.pagination?.total ?? studentsData.students?.length ?? 0) : students.length;
+          const liveObs = obsData.success ? (obsData.observations || []) : [];
+          const totalNewConcerns = obsData.success && obsData.pagination ? obsData.pagination.total : liveObs.length;
+          const totalReports = reportsData.success && reportsData.reports ? reportsData.reports.length : 0;
+          const totalTemplates = templatesData.success && templatesData.templates ? templatesData.templates.length : 0;
+
+          setStats({
+            totalStudents,
+            newConcerns: totalNewConcerns,
+            activeAssessments: totalTemplates,
+            reportsCount: totalReports,
+          });
+
+          setRecentConcerns(liveObs);
+
+          // Synthesize assessment entries from live templates or student observations
+          if (templatesData.success && templatesData.templates) {
+            setRecentAssessments(
+              templatesData.templates.slice(0, 3).map((t: any) => ({
+                id: String(t.id),
+                protocol: t.name,
+                date: 'Active Protocol',
+                student: `${t.questions?.length || 5} Questions`,
+                progress: 100,
+                statusText: 'Published',
+                isComplete: true,
+              }))
+            );
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load psychologist dashboard data:', err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    fetchLiveDashboard();
+    return () => {
+      cancelled = true;
+    };
+  }, [students]);
+
+  const greetingName = user?.name ? user.name : 'Dr. Sarah Jenkins';
+
+
 
   // ==========================================
   // VIEW MODE 1: CLASS AGGREGATE REPORT (IMAGE 1)
@@ -328,7 +355,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
-            Good morning, Dr. Mercer
+            Good morning, {greetingName}
           </h1>
           <p className="text-sm text-slate-500 mt-1 font-medium">
             Review student concerns, assessments and reports.
@@ -365,55 +392,75 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       {/* 4 KPI Summary Cards Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         {/* STUDENTS Card */}
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col justify-between hover:border-slate-300 transition-colors">
+        <div
+          onClick={() => setActiveTab('students')}
+          className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col justify-between hover:border-blue-400 hover:shadow-xs transition-all cursor-pointer"
+        >
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold tracking-wider text-slate-500 uppercase">
               Students
             </span>
-            <Users className="w-4 h-4 text-slate-500" />
+            <Users className="w-4 h-4 text-blue-600" />
           </div>
           <div className="mt-3">
-            <span className="text-3xl font-extrabold text-slate-900 tracking-tight">142</span>
+            <span className="text-3xl font-extrabold text-slate-900 tracking-tight">
+              {stats.totalStudents}
+            </span>
           </div>
         </div>
 
         {/* NEW CONCERNS Card */}
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col justify-between hover:border-slate-300 transition-colors">
+        <div
+          onClick={() => setActiveTab('observations')}
+          className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col justify-between hover:border-amber-400 hover:shadow-xs transition-all cursor-pointer"
+        >
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold tracking-wider text-slate-500 uppercase">
-              New Concerns
+              Observations
             </span>
             <AlertTriangle className="w-4 h-4 text-amber-600" />
           </div>
           <div className="mt-3">
-            <span className="text-3xl font-extrabold text-slate-900 tracking-tight">8</span>
+            <span className="text-3xl font-extrabold text-slate-900 tracking-tight">
+              {stats.newConcerns}
+            </span>
           </div>
         </div>
 
         {/* ASSESSMENTS Card */}
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col justify-between hover:border-slate-300 transition-colors">
+        <div
+          onClick={() => setActiveTab('assessments')}
+          className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col justify-between hover:border-blue-400 hover:shadow-xs transition-all cursor-pointer"
+        >
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold tracking-wider text-slate-500 uppercase">
-              Assessments
+              Protocols
             </span>
             <Calendar className="w-4 h-4 text-blue-600" />
           </div>
           <div className="mt-3 flex items-baseline gap-1.5">
-            <span className="text-3xl font-extrabold text-slate-900 tracking-tight">12</span>
-            <span className="text-xs font-medium text-slate-500">in progress</span>
+            <span className="text-3xl font-extrabold text-slate-900 tracking-tight">
+              {stats.activeAssessments}
+            </span>
+            <span className="text-xs font-medium text-slate-500">available</span>
           </div>
         </div>
 
         {/* REPORTS READY Card */}
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col justify-between hover:border-slate-300 transition-colors">
+        <div
+          onClick={() => setActiveTab('reports')}
+          className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col justify-between hover:border-blue-400 hover:shadow-xs transition-all cursor-pointer"
+        >
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold tracking-wider text-slate-500 uppercase">
-              Reports Ready
+              Reports Generated
             </span>
-            <CheckCircle2 className="w-4 h-4 text-blue-600" />
+            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
           </div>
           <div className="mt-3">
-            <span className="text-3xl font-extrabold text-slate-900 tracking-tight">5</span>
+            <span className="text-3xl font-extrabold text-slate-900 tracking-tight">
+              {stats.reportsCount}
+            </span>
           </div>
         </div>
       </div>
@@ -445,34 +492,42 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs">
-                {recentConcerns.map((row) => (
-                  <tr key={row.id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="px-6 py-4 font-bold text-slate-900">{row.student}</td>
-                    <td className="px-6 py-4 text-slate-600 font-medium">{row.class}</td>
-                    <td className="px-6 py-4 text-slate-700 font-medium">{row.concern}</td>
-                    <td className="px-6 py-4 text-slate-500 font-medium">{row.date}</td>
-                    <td className="px-6 py-4">
-                      {row.status === 'NEW' ? (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider bg-red-100 text-red-700">
-                          NEW
+                {recentConcerns.length > 0 ? (
+                  recentConcerns.map((row) => (
+                    <tr key={row.id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="px-6 py-4 font-bold text-slate-900">{row.studentName}</td>
+                      <td className="px-6 py-4 text-slate-600 font-medium">{row.grade || row.classGroup || 'N/A'}</td>
+                      <td className="px-6 py-4 text-slate-700 font-medium">{row.concernCategory}</td>
+                      <td className="px-6 py-4 text-slate-500 font-medium">{row.date}</td>
+                      <td className="px-6 py-4">
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider ${
+                            row.status === 'New'
+                              ? 'bg-red-100 text-red-700'
+                              : 'bg-slate-100 text-slate-700'
+                          }`}
+                        >
+                          {row.status}
                         </span>
-                      ) : (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider bg-slate-200 text-slate-700">
-                          REVIEWED
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <button
-                        onClick={() => setActiveTab('observations')}
-                        className="p-1 text-blue-700 hover:text-blue-900 hover:bg-blue-50 rounded-md transition-colors inline-flex items-center justify-center cursor-pointer"
-                        title="View Observation"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <button
+                          onClick={() => setActiveTab('observations')}
+                          className="p-1 text-blue-700 hover:text-blue-900 hover:bg-blue-50 rounded-md transition-colors inline-flex items-center justify-center cursor-pointer"
+                          title="View Observation"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-8 text-center text-slate-400">
+                      No observation records filed yet.
                     </td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
           </div>

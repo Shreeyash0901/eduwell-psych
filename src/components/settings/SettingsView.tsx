@@ -12,12 +12,15 @@ import {
   FileText
 } from 'lucide-react';
 
+import { SchoolApiSettingsSection } from './SchoolApiSettingsSection';
+
 interface SettingsViewProps {
   setActiveTab: (tab: ActiveTab) => void;
 }
 
 type SettingsSection =
   | 'school_profile'
+  | 'school_api'
   | 'users_roles'
   | 'classes_sections'
   | 'assessment_settings'
@@ -61,6 +64,7 @@ export const SettingsView: React.FC<SettingsViewProps> = () => {
 
   const navTabs = [
     { id: 'school_profile' as SettingsSection, label: 'School Profile' },
+    { id: 'school_api' as SettingsSection, label: 'School API & Sync' },
     { id: 'users_roles' as SettingsSection, label: 'Users & Roles' },
     { id: 'classes_sections' as SettingsSection, label: 'Classes & Sections' },
     { id: 'assessment_settings' as SettingsSection, label: 'Assessment Settings' },
@@ -336,6 +340,10 @@ export const SettingsView: React.FC<SettingsViewProps> = () => {
                 </div>
               </div>
             </div>
+          )}
+
+          {activeSection === 'school_api' && (
+            <SchoolApiSettingsSection />
           )}
 
           {activeSection === 'classes_sections' && (

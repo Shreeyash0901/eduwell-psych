@@ -35,6 +35,7 @@ model School {
   assessmentTemplates AssessmentTemplate[]
   studentAssessments  StudentAssessment[]
   reports             Report[]
+  schoolApiAuditLogs  SchoolApiAuditLog[]
 
   @@map("schools")
 }
@@ -87,6 +88,7 @@ model User {
   generatedReports      Report[]             @relation("ReportGeneratedBy")
   teacherClassAccesses   TeacherClassAccess[]
   teacherSectionAccesses TeacherSectionAccess[]
+  schoolApiAuditLogs    SchoolApiAuditLog[]
 
   @@index([schoolId])
   @@map("users")
@@ -260,10 +262,18 @@ model StudentObservation {
   schoolId           Int      @map("school_id")
   studentId          Int      @map("student_id")
   submittedBy        Int      @map("submitted_by")
-  source             String   @db.VarChar(30) // TEACHER, PARENT, PSYCHOLOGIST
+  source             String   @db.VarChar(30) // TEACHER, PARENT, COUNSELOR, PSYCHOLOGIST
   category           String   @db.VarChar(100)
   observation        String   @db.Text
   additionalComments String?  @map("additional_comments") @db.Text
+  recordNumber       String?  @map("record_number") @db.VarChar(50)
+  setting            String?  @db.VarChar(100)
+  incidentTime       String?  @map("incident_time") @db.VarChar(50)
+  triggers           String?  @db.Text
+  interventions      String?  @db.Text
+  submitterName      String?  @map("submitter_name") @db.VarChar(100)
+  psychologistNotes  String?  @map("psychologist_notes") @db.Text
+  aiAnalysis         String?  @map("ai_analysis") @db.Text
   status             String   @default("PENDING") @db.VarChar(30)
   observedAt         DateTime @map("observed_at") @db.Date
   createdAt          DateTime @default(now()) @map("created_at") @db.Timestamp(6)
@@ -276,6 +286,7 @@ model StudentObservation {
   @@index([schoolId])
   @@index([studentId])
   @@index([submittedBy])
+  @@unique([schoolId, recordNumber])
   @@map("student_observations")
 }
 
@@ -571,5 +582,30 @@ model TeacherSectionAccess {
   @@index([userId])
   @@index([sectionId])
   @@map("teacher_section_access")
+}
+
+// ============================================================
+// 23. school_api_audit_logs — School API Sync & Test Audit Trail
+// ============================================================
+
+model SchoolApiAuditLog {
+  id               Int      @id @default(autoincrement())
+  schoolId         Int      @map("school_id")
+  action           String   @db.VarChar(50) // CONNECTION_TEST, STUDENT_SYNC
+  status           String   @db.VarChar(20) // SUCCESS, FAILED
+  actorId          Int      @map("actor_id")
+  targetIdentifier String?  @map("target_identifier") @db.VarChar(100)
+  errorMessage     String?  @map("error_message") @db.Text
+  metadata         Json?    @db.JsonB
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  actor  User   @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([schoolId])
+  @@index([actorId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("school_api_audit_logs")
 }
 

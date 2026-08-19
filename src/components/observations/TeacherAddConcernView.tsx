@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { toast } from 'sonner';
-import { Student, ActiveTab, ObservationRecord } from '../../types';
+import { ActiveTab } from '../../types';
 import {
   ArrowLeft,
   User,
@@ -14,10 +14,9 @@ import {
   MoreHorizontal,
   ChevronDown
 } from 'lucide-react';
+import { useStudents } from '../../hooks/useStudents';
 
 interface TeacherAddConcernViewProps {
-  students: Student[];
-  onSubmitObservation: (obs: ObservationRecord) => void;
   onCancel: () => void;
   setActiveTab: (tab: ActiveTab) => void;
 }
@@ -25,16 +24,17 @@ interface TeacherAddConcernViewProps {
 type ConcernCategory = 'Attention' | 'Behaviour' | 'Learning' | 'Social' | 'Emotional' | 'Other';
 
 export const TeacherAddConcernView: React.FC<TeacherAddConcernViewProps> = ({
-  students,
-  onSubmitObservation,
   onCancel,
   setActiveTab,
 }) => {
-  const [selectedStudentId, setSelectedStudentId] = useState<string | number>(students[0]?.id || 's2');
+  const { students, loading: studentsLoading } = useStudents();
+  const [selectedStudentId, setSelectedStudentId] = useState<string | number>('');
   const [selectedCategory, setSelectedCategory] = useState<ConcernCategory>('Attention');
   const [observationDetails, setObservationDetails] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const selectedStudent = students.find((s) => String(s.id) === String(selectedStudentId)) || students[0];
+  const selectedStudent =
+    students.find((s) => String(s.id) === String(selectedStudentId)) || students[0];
 
   const categories: { id: ConcernCategory; label: string; icon: React.ReactNode }[] = [
     { id: 'Attention', label: 'Attention', icon: <Target className="w-5 h-5" /> },
@@ -45,40 +45,47 @@ export const TeacherAddConcernView: React.FC<TeacherAddConcernViewProps> = ({
     { id: 'Other', label: 'Other', icon: <MoreHorizontal className="w-5 h-5" /> },
   ];
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!observationDetails.trim()) {
       alert('Please enter observation details before submitting.');
       return;
     }
+    if (!selectedStudent) {
+      toast.error('Please select a student.');
+      return;
+    }
 
-    const newObs: ObservationRecord = {
-      id: `obs-${Date.now()}`,
-      recordNumber: `#${Math.floor(8000 + Math.random() * 1000)}`,
-      studentId: selectedStudent?.studentId || '10482',
-      studentName: selectedStudent?.name || 'Alex Johnson',
-      classGroup: `${selectedStudent?.grade || 'Grade 4'} - Classroom`,
-      source: 'Teacher',
-      concernCategory: selectedCategory,
-      date: 'Today, ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      incidentTime: `${new Date().toLocaleDateString()} - ${new Date().toLocaleTimeString([], {
-        hour: '2-digit',
-        minute: '2-digit',
-      })}`,
-      setting: 'Classroom',
-      status: 'New',
-      submitter: 'Primary Educator',
-      narrative: observationDetails,
-      triggers: 'Observed during instructional lesson',
-      interventions: 'Teacher classroom logging',
-      psychologistNotes: '',
-    };
-
-    onSubmitObservation(newObs);
-    toast.success('Observation recorded successfully!');
-    setTimeout(() => {
-      setActiveTab('observations');
-    }, 900);
+    setIsSubmitting(true);
+    try {
+      const res = await fetch('/api/observations', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          studentId: selectedStudent.id,
+          source: 'Teacher',
+          category: selectedCategory,
+          observation: observationDetails.trim(),
+          setting: 'Classroom',
+          triggers: 'Observed during instructional lesson',
+          interventions: 'Teacher classroom logging',
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success('Observation recorded successfully!');
+        setTimeout(() => {
+          setActiveTab('observations');
+        }, 900);
+      } else {
+        toast.error(data.error || 'Failed to record observation.');
+      }
+    } catch (err: any) {
+      toast.error('Failed to record observation: ' + err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -122,8 +129,13 @@ export const TeacherAddConcernView: React.FC<TeacherAddConcernViewProps> = ({
             <select
               value={selectedStudentId}
               onChange={(e) => setSelectedStudentId(e.target.value)}
-              className="w-full bg-white border border-slate-200 hover:border-slate-300 rounded-xl p-3 pr-10 text-xs font-semibold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-600 appearance-none cursor-pointer transition-colors"
+              disabled={studentsLoading}
+              className="w-full bg-white border border-slate-200 hover:border-slate-300 rounded-xl p-3 pr-10 text-xs font-semibold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-600 appearance-none cursor-pointer transition-colors disabled:opacity-60"
             >
+              {studentsLoading && <option value="">Loading students...</option>}
+              {!studentsLoading && students.length === 0 && (
+                <option value="">No students available</option>
+              )}
               {students.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name} • {s.grade} ({s.classGroup || s.homeroom}) • ID: {s.studentId}
@@ -213,9 +225,10 @@ export const TeacherAddConcernView: React.FC<TeacherAddConcernViewProps> = ({
           </button>
           <button
             type="submit"
-            className="px-6 py-2.5 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-xs sm:text-sm font-semibold transition-colors shadow-xs cursor-pointer"
+            disabled={isSubmitting}
+            className="px-6 py-2.5 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-xs sm:text-sm font-semibold transition-colors shadow-xs cursor-pointer disabled:opacity-60"
           >
-            Submit Observation
+            {isSubmitting ? 'Submitting...' : 'Submit Observation'}
           </button>
         </div>
       </form>

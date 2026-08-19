@@ -620,3 +620,302 @@ studentsRouter.post("/", async (req: AuthenticatedRequest, res: Response) => {
     });
   }
 });
+
+/**
+ * POST /api/students/sync-one
+ * Synchronize or preview a single student from the external School API.
+ * Role requirement: ADMIN only.
+ * Body:
+ *   - studentNo: string (Required - student ID or admission number sent to API)
+ *   - previewOnly?: boolean (Optional - if true, returns normalized data without persisting)
+ */
+studentsRouter.post("/sync-one", async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const schoolId = req.user!.schoolId;
+    const actorId = req.user!.id;
+    const userRole = (req.user!.role || "").toUpperCase();
+
+    // 1. Role Authorization check (ADMIN only)
+    if (userRole !== "ADMIN") {
+      return res.status(403).json({
+        success: false,
+        error: "Forbidden: Only school administrators are authorized to synchronize students from School API.",
+      });
+    }
+
+    const { studentNo, previewOnly } = req.body;
+    if (!studentNo || typeof studentNo !== "string" || !studentNo.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "Student identifier (studentNo) is required.",
+      });
+    }
+
+    const cleanStudentNo = studentNo.trim();
+
+    // 2. Fetch School API Config
+    const config = await prisma.schoolApiConfig.findFirst({
+      where: { schoolId },
+    });
+
+    if (!config || !config.isEnabled) {
+      return res.status(400).json({
+        success: false,
+        error: "School API integration is not configured or is currently disabled. Check Settings.",
+      });
+    }
+
+    // 3. Query External School API via outbound service
+    const { fetchStudentFromSchoolApi } = await import("./services/schoolApiService");
+    const fetchResult = await fetchStudentFromSchoolApi(
+      {
+        baseUrl: config.baseUrl,
+        schoolCode: config.schoolCode,
+        appVersion: config.appVersion,
+        appOs: config.appOs,
+      },
+      cleanStudentNo
+    );
+
+    if (!fetchResult.success || !fetchResult.student) {
+      // Record failed audit log
+      await prisma.schoolApiAuditLog.create({
+        data: {
+          schoolId,
+          actorId,
+          action: "STUDENT_SYNC",
+          status: "FAILED",
+          targetIdentifier: cleanStudentNo,
+          errorMessage: fetchResult.error || "No student record found in School API for the provided identifier.",
+        },
+      });
+
+      return res.status(404).json({
+        success: false,
+        error: fetchResult.error || `No student record found in School API for "${cleanStudentNo}".`,
+      });
+    }
+
+    const ext = fetchResult.student;
+
+    // 4. Determine matching student in local DB
+    // Priority order per spec:
+    // 1. external_student_id
+    // 2. student_id / admission_no
+    // 3. email only as supporting match
+    let matchedStudent: any = null;
+
+    if (ext.externalStudentId) {
+      matchedStudent = await prisma.student.findFirst({
+        where: { schoolId, externalStudentId: ext.externalStudentId },
+      });
+    }
+
+    if (!matchedStudent && (ext.admissionNo || cleanStudentNo)) {
+      matchedStudent = await prisma.student.findFirst({
+        where: {
+          schoolId,
+          OR: [
+            { studentId: cleanStudentNo },
+            { admissionNo: cleanStudentNo },
+            ...(ext.admissionNo ? [{ admissionNo: ext.admissionNo }, { studentId: ext.admissionNo }] : []),
+          ],
+        },
+      });
+    }
+
+    if (!matchedStudent && ext.email) {
+      matchedStudent = await prisma.student.findFirst({
+        where: { schoolId, email: ext.email },
+      });
+    }
+
+    // If previewOnly is requested, return preview without updating DB
+    if (previewOnly === true) {
+      return res.json({
+        success: true,
+        preview: true,
+        matchType: matchedStudent ? "EXISTING_RECORD_UPDATE" : "NEW_STUDENT_CREATION",
+        matchedStudentId: matchedStudent?.id || null,
+        normalized: ext,
+      });
+    }
+
+    // 5. Execute Transactional Upsert
+    const upsertResult = await prisma.$transaction(async (tx) => {
+      // A. Resolve or create Class if externalClassId / className provided
+      let resolvedClassId: number | null = matchedStudent?.classId || null;
+      if (ext.externalClassId || ext.className) {
+        const existingClass = await tx.class.findFirst({
+          where: {
+            schoolId,
+            OR: [
+              ...(ext.externalClassId ? [{ externalClassId: ext.externalClassId }] : []),
+              ...(ext.className ? [{ name: { contains: ext.className, mode: "insensitive" as const } }] : []),
+            ],
+          },
+        });
+
+        if (existingClass) {
+          resolvedClassId = existingClass.id;
+        } else if (ext.className) {
+          const newClass = await tx.class.create({
+            data: {
+              schoolId,
+              name: ext.className,
+              externalClassId: ext.externalClassId,
+              isActive: true,
+            },
+          });
+          resolvedClassId = newClass.id;
+        }
+      }
+
+      // B. Resolve or create Section if Class is known
+      let resolvedSectionId: number | null = matchedStudent?.sectionId || null;
+      if (resolvedClassId && !resolvedSectionId) {
+        const defaultSection = await tx.section.findFirst({
+          where: { classId: resolvedClassId, isActive: true },
+        });
+        if (defaultSection) {
+          resolvedSectionId = defaultSection.id;
+        }
+      }
+
+      // C. Resolve Academic Session if externalSessionId provided
+      if (ext.externalSessionId) {
+        const existingSession = await tx.academicSession.findFirst({
+          where: { schoolId, externalSessionId: ext.externalSessionId },
+        });
+        if (!existingSession) {
+          // Link if current session exists
+          await tx.academicSession.updateMany({
+            where: { schoolId, isCurrent: true },
+            data: { externalSessionId: ext.externalSessionId },
+          });
+        }
+      }
+
+      const generatedStudentId =
+        matchedStudent?.studentId ||
+        ext.admissionNo ||
+        (ext.externalStudentId ? `STU-${ext.externalStudentId}` : `STU-${cleanStudentNo}`);
+
+      const now = new Date();
+
+      let studentRecord;
+      if (matchedStudent) {
+        studentRecord = await tx.student.update({
+          where: { id: matchedStudent.id },
+          data: {
+            externalStudentId: ext.externalStudentId || matchedStudent.externalStudentId,
+            admissionNo: ext.admissionNo || matchedStudent.admissionNo,
+            registrationNo: ext.registrationNo || matchedStudent.registrationNo,
+            firstName: ext.firstName || matchedStudent.firstName,
+            middleName: ext.middleName || matchedStudent.middleName,
+            lastName: ext.lastName || matchedStudent.lastName,
+            fullName: ext.fullName || matchedStudent.fullName,
+            email: ext.email || matchedStudent.email,
+            phone: ext.phone || matchedStudent.phone,
+            alternatePhone: ext.alternatePhone || matchedStudent.alternatePhone,
+            gender: ext.gender || matchedStudent.gender,
+            dateOfBirth: ext.dateOfBirth || matchedStudent.dateOfBirth,
+            classId: resolvedClassId,
+            sectionId: resolvedSectionId,
+            photoUrl: ext.photoUrl || matchedStudent.photoUrl,
+            source: "SCHOOL_API",
+            lastSyncedAt: now,
+            isActive: true,
+          },
+          include: {
+            class: { select: { id: true, name: true } },
+            section: { select: { id: true, name: true } },
+          },
+        });
+      } else {
+        studentRecord = await tx.student.create({
+          data: {
+            schoolId,
+            studentId: generatedStudentId,
+            externalStudentId: ext.externalStudentId,
+            admissionNo: ext.admissionNo || cleanStudentNo,
+            registrationNo: ext.registrationNo,
+            firstName: ext.firstName,
+            middleName: ext.middleName,
+            lastName: ext.lastName,
+            fullName: ext.fullName,
+            email: ext.email,
+            phone: ext.phone,
+            alternatePhone: ext.alternatePhone,
+            gender: ext.gender,
+            dateOfBirth: ext.dateOfBirth,
+            classId: resolvedClassId,
+            sectionId: resolvedSectionId,
+            photoUrl: ext.photoUrl,
+            source: "SCHOOL_API",
+            lastSyncedAt: now,
+            isActive: true,
+          },
+          include: {
+            class: { select: { id: true, name: true } },
+            section: { select: { id: true, name: true } },
+          },
+        });
+      }
+
+      // D. Update lastSyncAt on school_api_configs
+      await tx.schoolApiConfig.update({
+        where: { id: config.id },
+        data: { lastSyncAt: now },
+      });
+
+      // E. Create SchoolApiAuditLog record
+      await tx.schoolApiAuditLog.create({
+        data: {
+          schoolId,
+          actorId,
+          action: "STUDENT_SYNC",
+          status: "SUCCESS",
+          targetIdentifier: cleanStudentNo,
+          metadata: {
+            studentId: studentRecord.studentId,
+            externalStudentId: studentRecord.externalStudentId,
+            isNew: !matchedStudent,
+            matchedStudentDbId: studentRecord.id,
+          },
+        },
+      });
+
+      return { student: studentRecord, isNew: !matchedStudent };
+    });
+
+    return res.status(upsertResult.isNew ? 201 : 200).json({
+      success: true,
+      message: upsertResult.isNew
+        ? `Successfully imported "${upsertResult.student.fullName}" from School API.`
+        : `Successfully synchronized "${upsertResult.student.fullName}" with School API.`,
+      isNew: upsertResult.isNew,
+      student: {
+        id: upsertResult.student.id,
+        studentId: upsertResult.student.studentId,
+        externalStudentId: upsertResult.student.externalStudentId,
+        admissionNo: upsertResult.student.admissionNo,
+        fullName: upsertResult.student.fullName,
+        name: upsertResult.student.fullName,
+        email: upsertResult.student.email,
+        gender: upsertResult.student.gender,
+        className: upsertResult.student.class?.name || null,
+        sectionName: upsertResult.student.section?.name || null,
+        source: upsertResult.student.source,
+        lastSyncedAt: upsertResult.student.lastSyncedAt?.toISOString() || null,
+      },
+    });
+  } catch (error) {
+    console.error("[STUDENTS_API] POST /api/students/sync-one error:", error);
+    return res.status(500).json({
+      success: false,
+      error: "An error occurred while synchronizing student data. Please try again.",
+    });
+  }
+});
+

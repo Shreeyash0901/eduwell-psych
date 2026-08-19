@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Student, ActiveTab, UserRole, PaginationMeta, StudentFilterLookups } from '../../types';
 import { AddStudentModal } from './AddStudentModal';
+import { SyncStudentModal } from './SyncStudentModal';
 import {
   Search,
   Filter,
@@ -17,6 +18,7 @@ import {
   Calendar,
   Layers,
   Check,
+  Zap,
 } from 'lucide-react';
 
 interface StudentsViewProps {
@@ -63,6 +65,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
   // Modal and Notification State
   const [selectedProfileModal, setSelectedProfileModal] = useState<Student | null>(null);
   const [isAddStudentOpen, setIsAddStudentOpen] = useState(false);
+  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
   const [successNotification, setSuccessNotification] = useState<{
     title: string;
     message: string;
@@ -228,9 +231,17 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
           </p>
         </div>
 
-        {/* Action Button: Show + Add Student only when user is Admin */}
+        {/* Action Button: Show + Add Student & Sync from School API only when user is Admin */}
         {userRole === 'admin' && (
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => setIsSyncModalOpen(true)}
+              className="inline-flex items-center gap-2 px-3.5 py-2 bg-white border border-blue-200/90 text-blue-700 rounded-lg text-sm font-semibold hover:bg-blue-50/60 shadow-2xs transition-colors cursor-pointer"
+            >
+              <Zap className="w-4 h-4 text-blue-600" />
+              <span>⚡ Sync from School API</span>
+            </button>
+
             <button
               onClick={() => setIsAddStudentOpen(true)}
               className="inline-flex items-center gap-2 px-4 py-2 bg-blue-700 text-white rounded-lg text-sm font-semibold hover:bg-blue-800 shadow-sm transition-colors cursor-pointer"
@@ -565,6 +576,16 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
         <AddStudentModal
           onClose={() => setIsAddStudentOpen(false)}
           onAddStudent={handleStudentAdded}
+        />
+      )}
+
+      {/* Sync from School API Modal */}
+      {isSyncModalOpen && (
+        <SyncStudentModal
+          onClose={() => setIsSyncModalOpen(false)}
+          onSyncSuccess={(newStudent, isNew) => {
+            handleStudentAdded(newStudent);
+          }}
         />
       )}
 

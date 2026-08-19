@@ -17,12 +17,14 @@ import {
 
 interface AssessmentResultViewProps {
   result: AssessmentResult;
+  userRole?: string;
   onBack: () => void;
   setActiveTab: (tab: ActiveTab) => void;
 }
 
 export const AssessmentResultView: React.FC<AssessmentResultViewProps> = ({
   result,
+  userRole,
   onBack,
   setActiveTab,
 }) => {
@@ -36,6 +38,7 @@ export const AssessmentResultView: React.FC<AssessmentResultViewProps> = ({
     try {
       const res = await fetch('/api/gemini/assessment-summary', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           studentName: result.studentName,
@@ -108,13 +111,15 @@ export const AssessmentResultView: React.FC<AssessmentResultViewProps> = ({
             <Download className="w-4 h-4 text-slate-500" />
             Export Report
           </button>
-          <button
-            onClick={() => setActiveTab('psychologist_interpretation')}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-700 text-white rounded-lg text-sm font-semibold hover:bg-blue-800 shadow-sm transition-colors cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            Psychologist Interpretation
-          </button>
+          {userRole !== 'teacher' && (
+            <button
+              onClick={() => setActiveTab('psychologist_interpretation')}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-700 text-white rounded-lg text-sm font-semibold hover:bg-blue-800 shadow-sm transition-colors cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              Psychologist Interpretation
+            </button>
+          )}
         </div>
       </div>
 

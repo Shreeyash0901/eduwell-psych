@@ -102,7 +102,8 @@ export interface ObservationRecord {
   studentId: string;
   studentName: string;
   classGroup: string;
-  source: 'Teacher' | 'Parent' | 'Counselor';
+  grade?: string;
+  source: 'Teacher' | 'Parent' | 'Counselor' | 'Psychologist';
   concernCategory:
     | 'Attention'
     | 'Behaviour'
@@ -127,10 +128,17 @@ export interface ObservationRecord {
   aiAnalysis?: string;
 }
 
+export interface AssessmentQuestionOption {
+  id: number;
+  text: string;
+  score: number;
+}
+
 export interface AssessmentQuestion {
   id: number;
   text: string;
   domain: string;
+  options?: AssessmentQuestionOption[];
 }
 
 export interface AssessmentProtocol {

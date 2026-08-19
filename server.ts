@@ -9,6 +9,11 @@ import cookieParser from "cookie-parser";
 import { authRouter } from "./src/server/auth";
 import { studentsRouter } from "./src/server/students";
 import { lookupsRouter } from "./src/server/lookups";
+import { observationsRouter } from "./src/server/observations";
+import { assessmentsRouter } from "./src/server/assessments";
+import { reportsRouter } from "./src/server/reports";
+import { schoolApiRouter } from "./src/server/schoolApi";
+import { requireAuth } from "./src/server/middleware/auth";
 import { serverConfig } from "./src/server/env";
 
 dotenv.config();
@@ -48,6 +53,10 @@ app.use(express.json());
 app.use("/api/auth", authRouter);
 app.use("/api/students", studentsRouter);
 app.use("/api/lookups", lookupsRouter);
+app.use("/api/observations", observationsRouter);
+app.use("/api/assessments", assessmentsRouter);
+app.use("/api/reports", reportsRouter);
+app.use("/api/school-api", schoolApiRouter);
 
 // Initialize Gemini API client on server
 const getGeminiClient = () => {
@@ -69,7 +78,7 @@ app.get("/api/health", (_req, res) => {
 });
 
 // AI Observation Analysis endpoint
-app.post("/api/gemini/analyze-observation", async (req, res) => {
+app.post("/api/gemini/analyze-observation", requireAuth, async (req, res) => {
   try {
     const { studentName, grade, narrative, triggers, interventions } = req.body;
     const ai = getGeminiClient();
@@ -111,7 +120,7 @@ Keep tone objective, supportive, and formatted in clear sections with bullet poi
 });
 
 // AI Assessment Interpretation endpoint
-app.post("/api/gemini/assessment-summary", async (req, res) => {
+app.post("/api/gemini/assessment-summary", requireAuth, async (req, res) => {
   try {
     const { studentName, assessmentName, scores, overallScore } = req.body;
     const ai = getGeminiClient();

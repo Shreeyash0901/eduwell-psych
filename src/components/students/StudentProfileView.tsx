@@ -38,8 +38,8 @@ export type ProfileTab = 'overview' | 'observations' | 'assessments' | 'reports'
 interface StudentProfileViewProps {
   student?: Student;
   studentId?: string | number | null;
-  observations?: ObservationRecord[];
   initialTab?: ProfileTab;
+  refreshKey?: number;
   onOpenNewAssessment: (studentName?: string) => void;
   onGenerateReport?: (studentName: string) => void;
   onOpenNewObservation?: () => void;
@@ -50,8 +50,8 @@ interface StudentProfileViewProps {
 export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
   student: initialStudent,
   studentId: propStudentId,
-  observations = [],
   initialTab = 'overview',
+  refreshKey = 0,
   onOpenNewAssessment,
   onGenerateReport,
   onOpenNewObservation,
@@ -62,10 +62,17 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
   const [apiStudent, setApiStudent] = useState<Student | null>(initialStudent || null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [observations, setObservations] = useState<ObservationRecord[]>([]);
+  const [observationsLoading, setObservationsLoading] = useState<boolean>(false);
+  const [observationsError, setObservationsError] = useState<string | null>(null);
+  const [assessments, setAssessments] = useState<any[]>([]);
+  const [assessmentsLoading, setAssessmentsLoading] = useState<boolean>(false);
+  const [assessmentsError, setAssessmentsError] = useState<string | null>(null);
 
   // Derive target identifier from prop, initial student, or URL hash
   const effectiveId =
     propStudentId ||
+    apiStudent?.id ||
     initialStudent?.id ||
     (() => {
       const hash = window.location.hash;
@@ -75,7 +82,13 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
 
   // Fetch real student profile from GET /api/students/:id
   const fetchStudentProfile = async () => {
-    if (!effectiveId) {
+    const idToFetch = propStudentId || (() => {
+      const hash = window.location.hash;
+      const match = hash.match(/[#?]id=([^&]+)/) || hash.match(/#student_profile\/([^?&]+)/);
+      return match ? match[1] : null;
+    })() || initialStudent?.id;
+
+    if (!idToFetch) {
       // If no ID is available, fall back to initialStudent if present
       if (initialStudent) {
         setApiStudent(initialStudent);
@@ -120,6 +133,57 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
     fetchStudentProfile();
   }, [effectiveId]);
 
+  // Fetch observation records for this student from the Observations API
+  const fetchObservations = async () => {
+    const targetId = apiStudent?.id || effectiveId;
+    if (!targetId) return;
+    setObservationsLoading(true);
+    setObservationsError(null);
+    try {
+      const res = await fetch(`/api/observations?studentId=${encodeURIComponent(targetId)}&limit=100`, {
+        credentials: 'include',
+      });
+      const data = await res.json();
+      if (data.success) {
+        setObservations(data.observations || []);
+      } else {
+        setObservationsError(data.error || 'Failed to load observations.');
+      }
+    } catch (err: any) {
+      setObservationsError(err.message || 'Failed to load observations.');
+    } finally {
+      setObservationsLoading(false);
+    }
+  };
+
+  // Fetch assessment history records for this student from the Assessments API
+  const fetchAssessments = async () => {
+    const targetId = apiStudent?.id || effectiveId;
+    if (!targetId) return;
+    setAssessmentsLoading(true);
+    setAssessmentsError(null);
+    try {
+      const res = await fetch(`/api/assessments/student/${encodeURIComponent(targetId)}`, {
+        credentials: 'include',
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAssessments(data.assessments || []);
+      } else {
+        setAssessmentsError(data.error || 'Failed to load assessments.');
+      }
+    } catch (err: any) {
+      setAssessmentsError(err.message || 'Failed to load assessments.');
+    } finally {
+      setAssessmentsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchObservations();
+    fetchAssessments();
+  }, [effectiveId, apiStudent?.id, refreshKey]);
+
   // Construct display representation
   const studentData = apiStudent || initialStudent;
   const displayName =
@@ -138,40 +202,6 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
   const calculatedAge = studentData?.dateOfBirth
     ? Math.floor((Date.now() - new Date(studentData.dateOfBirth).getTime()) / (365.25 * 24 * 3600 * 1000))
     : studentData?.age || 13;
-
-  // Conducted Assessments Mock Data for sub-tabs
-  const conductedAssessments = [
-    {
-      id: 'a1',
-      name: 'Emotional Wellbeing Scale',
-      date: 'Oct 12, 2024',
-      score: '78/100',
-      indicator: 'Monitor',
-      indicatorClass: 'bg-blue-50 text-blue-800 border border-blue-200/60',
-      status: 'Completed',
-      isDraft: false,
-    },
-    {
-      id: 'a2',
-      name: 'Cognitive Load & Behavioral Screener',
-      date: 'Sep 28, 2024',
-      score: '85/100',
-      indicator: 'Normal',
-      indicatorClass: 'bg-blue-100/80 text-blue-800 border border-blue-200/60',
-      status: 'Completed',
-      isDraft: false,
-    },
-    {
-      id: 'a3',
-      name: 'Social Integration Index',
-      date: 'Nov 02, 2024',
-      score: 'Pending',
-      indicator: 'N/A',
-      indicatorClass: 'bg-slate-100 text-slate-600 border border-slate-200',
-      status: 'Draft',
-      isDraft: true,
-    },
-  ];
 
   // Loading state skeleton
   if (isLoading) {
@@ -504,26 +534,51 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
                 </button>
               </div>
 
-              <div className="divide-y divide-slate-100">
-                {conductedAssessments.map((a) => (
-                  <div key={a.id} className="py-3 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center shrink-0">
-                        <BookOpen className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <h4 className="text-xs font-bold text-slate-900">{a.name}</h4>
-                        <p className="text-[11px] text-slate-400 font-medium">{a.date}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${a.indicatorClass}`}>
-                        {a.indicator}
-                      </span>
-                      <span className="text-sm font-bold text-slate-900">{a.score}</span>
-                    </div>
+              <div className="text-xs text-slate-500 font-medium">
+                {assessmentsLoading ? (
+                  <p className="py-6 text-center text-slate-400">Loading assessments...</p>
+                ) : assessments.length > 0 ? (
+                  <div className="divide-y divide-slate-100">
+                    {assessments.slice(0, 3).map((a) => {
+                      const dateStr = a.completedAt
+                        ? new Date(a.completedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                        : new Date(a.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                      const scoreStr = a.overallScore !== null && a.overallScore !== undefined ? `${a.overallScore}` : 'Pending';
+                      const attentionLevel = a.attentionLevel || 'Normal';
+
+                      let badgeColor = 'bg-emerald-50 text-emerald-700 border border-emerald-200/60';
+                      if (attentionLevel === 'High' || attentionLevel === 'ATTENTION_REQUIRED') {
+                        badgeColor = 'bg-rose-50 text-rose-700 border border-rose-200/60';
+                      } else if (attentionLevel === 'Moderate' || attentionLevel === 'MONITOR') {
+                        badgeColor = 'bg-amber-50 text-amber-700 border border-amber-200/60';
+                      }
+
+                      return (
+                        <div key={a.id} className="py-3 flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center shrink-0">
+                              <BookOpen className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <h4 className="text-xs font-bold text-slate-900">{a.assessmentTemplate?.name || 'Standard Assessment'}</h4>
+                              <p className="text-[11px] text-slate-400 font-medium">{dateStr}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${badgeColor}`}>
+                              {attentionLevel}
+                            </span>
+                            <span className="text-sm font-bold text-slate-900">{scoreStr}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                ))}
+                ) : (
+                  <p className="py-6 text-center text-slate-400">
+                    No standardized assessments recorded for {displayName} yet.
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -547,7 +602,11 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
             )}
           </div>
           <div className="text-xs text-slate-500 font-medium">
-            {observations.length > 0 ? (
+            {observationsLoading ? (
+              <p className="py-8 text-center text-slate-400">Loading observations...</p>
+            ) : observationsError ? (
+              <p className="py-8 text-center text-red-500">{observationsError}</p>
+            ) : observations.length > 0 ? (
               <div className="divide-y divide-slate-100">
                 {observations.map((obs) => (
                   <div key={obs.id} className="py-3 flex items-center justify-between">
@@ -584,31 +643,62 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
               + Start Screening Protocol
             </button>
           </div>
-          <div className="divide-y divide-slate-100">
-            {conductedAssessments.map((a) => (
-              <div key={a.id} className="py-3 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center shrink-0">
-                    <ClipboardCheck className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-slate-900">{a.name}</h4>
-                    <p className="text-[11px] text-slate-400 font-medium">{a.date} • {a.status}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-sm font-bold text-slate-900">{a.score}</span>
-                  {onSelectAssessmentResult && (
-                    <button
-                      onClick={onSelectAssessmentResult}
-                      className="text-xs font-bold text-blue-700 hover:underline cursor-pointer"
-                    >
-                      View Report &rarr;
-                    </button>
-                  )}
-                </div>
+          <div className="text-xs text-slate-500 font-medium">
+            {assessmentsLoading ? (
+              <p className="py-8 text-center text-slate-400">Loading assessments...</p>
+            ) : assessmentsError ? (
+              <p className="py-8 text-center text-red-500">{assessmentsError}</p>
+            ) : assessments.length > 0 ? (
+              <div className="divide-y divide-slate-100">
+                {assessments.map((a) => {
+                  const dateStr = a.completedAt
+                    ? new Date(a.completedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                    : new Date(a.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                  const scoreStr = a.overallScore !== null && a.overallScore !== undefined ? `${a.overallScore}` : 'Pending';
+                  const attentionLevel = a.attentionLevel || 'Normal';
+                  const statusLabel = a.status === 'COMPLETED' ? 'Completed' : 'In Progress';
+
+                  let badgeColor = 'bg-emerald-50 text-emerald-700 border border-emerald-200/60';
+                  if (attentionLevel === 'High' || attentionLevel === 'ATTENTION_REQUIRED') {
+                    badgeColor = 'bg-rose-50 text-rose-700 border border-rose-200/60';
+                  } else if (attentionLevel === 'Moderate' || attentionLevel === 'MONITOR') {
+                    badgeColor = 'bg-amber-50 text-amber-700 border border-amber-200/60';
+                  }
+
+                  return (
+                    <div key={a.id} className="py-3 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center shrink-0">
+                          <ClipboardCheck className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-bold text-slate-900">{a.assessmentTemplate?.name || 'Standard Assessment'}</h4>
+                          <p className="text-[11px] text-slate-400 font-medium">{dateStr} • {statusLabel}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${badgeColor}`}>
+                          {attentionLevel}
+                        </span>
+                        <span className="text-sm font-bold text-slate-900">{scoreStr}</span>
+                        {onSelectAssessmentResult && (
+                          <button
+                            onClick={onSelectAssessmentResult}
+                            className="text-xs font-bold text-blue-700 hover:underline cursor-pointer"
+                          >
+                            View Report &rarr;
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            ))}
+            ) : (
+              <p className="py-8 text-center text-slate-400">
+                No screening assessments recorded for {displayName} yet.
+              </p>
+            )}
           </div>
         </div>
       )}

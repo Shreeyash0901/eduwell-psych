@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { toast } from 'sonner';
-import { Student, ObservationRecord, ActiveTab } from '../../types';
+import { ActiveTab } from '../../types';
 import {
   Home,
   Send,
@@ -12,26 +12,25 @@ import {
   ArrowLeft,
   Share2
 } from 'lucide-react';
+import { useStudents } from '../../hooks/useStudents';
 
 interface ParentFeedbackViewProps {
-  students: Student[];
   selectedStudentName?: string;
-  onSubmitFeedback: (newObs: ObservationRecord) => void;
   setActiveTab: (tab: ActiveTab) => void;
 }
 
 export const ParentFeedbackView: React.FC<ParentFeedbackViewProps> = ({
-  students,
   selectedStudentName = 'Alex Johnson',
-  onSubmitFeedback,
   setActiveTab,
 }) => {
+  const { students, loading: studentsLoading } = useStudents();
   const [currentStudentName, setCurrentStudentName] = useState<string>(selectedStudentName);
   const [noticedAtHome, setNoticedAtHome] = useState('');
   const [optionalComments, setOptionalComments] = useState('');
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [submittedRecordNumber, setSubmittedRecordNumber] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const currentStudent =
     students.find((s) => s.name.toLowerCase() === currentStudentName.toLowerCase()) ||
@@ -45,48 +44,48 @@ export const ParentFeedbackView: React.FC<ParentFeedbackViewProps> = ({
 
   const studentFirstName = currentStudent.name.split(' ')[0] || 'the student';
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!noticedAtHome.trim()) {
       toast.error('Please describe what you have noticed at home before submitting.');
       return;
     }
 
-    const recNum = `OBS-${Math.floor(1000 + Math.random() * 9000)}`;
-    setSubmittedRecordNumber(recNum);
-
     const fullNarrative = optionalComments.trim()
       ? `${noticedAtHome.trim()}\n\nAdditional Parent Notes: ${optionalComments.trim()}`
       : noticedAtHome.trim();
 
-    const newObservation: ObservationRecord = {
-      id: `obs-${Date.now()}`,
-      recordNumber: recNum,
-      studentId: currentStudent.studentId,
-      studentName: currentStudent.name,
-      classGroup: currentStudent.classGroup || '5A',
-      source: 'Parent',
-      concernCategory: 'Behavioral',
-      date: new Date().toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      }),
-      incidentTime: 'Home Environment',
-      setting: 'Home / Family Context',
-      status: 'New',
-      submitter: 'Parent / Guardian',
-      narrative: fullNarrative,
-      triggers: 'Observed during evening routines / home tasks',
-      interventions: 'Parent monitoring & home support',
-      psychologistNotes: 'Submitted via EduWell Parent Feedback portal. Awaiting review.',
-      aiAnalysis:
-        'Parent-reported home observations indicate environmental stress indicators. Cross-referencing with classroom observation history recommended.',
-    };
-
-    onSubmitFeedback(newObservation);
-    toast.success('Feedback submitted successfully!');
-    setIsSubmitted(true);
+    setIsSubmitting(true);
+    try {
+      const res = await fetch('/api/observations', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          studentId: currentStudent.id,
+          source: 'Parent',
+          category: 'Behavioral',
+          observation: fullNarrative,
+          setting: 'Home / Family Context',
+          incidentTime: 'Home Environment',
+          triggers: 'Observed during evening routines / home tasks',
+          interventions: 'Parent monitoring & home support',
+          submitterName: 'Parent / Guardian',
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.observation) {
+        setSubmittedRecordNumber(data.observation.recordNumber);
+        toast.success('Feedback submitted successfully!');
+        setIsSubmitted(true);
+      } else {
+        toast.error(data.error || 'Failed to submit feedback.');
+      }
+    } catch (err: any) {
+      toast.error('Failed to submit feedback: ' + err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleCopyLink = () => {
@@ -117,6 +116,7 @@ export const ParentFeedbackView: React.FC<ParentFeedbackViewProps> = ({
                 <select
                   value={currentStudent.name}
                   onChange={(e) => setCurrentStudentName(e.target.value)}
+                  disabled={studentsLoading}
                   className="opacity-0 absolute inset-0 w-full h-full cursor-pointer"
                   title="Switch Student"
                 >
@@ -236,9 +236,10 @@ export const ParentFeedbackView: React.FC<ParentFeedbackViewProps> = ({
 
               <button
                 type="submit"
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-blue-700 hover:bg-blue-800 text-white font-semibold px-6 py-2.5 rounded-lg text-sm shadow-xs transition-colors cursor-pointer"
+                disabled={isSubmitting}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-blue-700 hover:bg-blue-800 text-white font-semibold px-6 py-2.5 rounded-lg text-sm shadow-xs transition-colors cursor-pointer disabled:opacity-60"
               >
-                <span>Submit Feedback</span>
+                <span>{isSubmitting ? 'Submitting...' : 'Submit Feedback'}</span>
                 <Send className="w-4 h-4" />
               </button>
             </div>

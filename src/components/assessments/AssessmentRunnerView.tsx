@@ -1,24 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
-import { AssessmentProtocol, Student, ActiveTab } from '../../types';
+import { AssessmentProtocol, Student, ActiveTab, AssessmentResult } from '../../types';
 import { ArrowLeft, ArrowRight, CheckCircle2 } from 'lucide-react';
 
 interface AssessmentRunnerViewProps {
   protocol: AssessmentProtocol;
   students: Student[];
   selectedStudentName?: string;
-  onCompleteAssessment: (studentName: string, answers: Record<number, number>) => void;
+  onCompleteAssessment: (studentName: string, answers: Record<number, number>, serverAssessment?: any) => void;
   onCancel: () => void;
   setActiveTab: (tab: ActiveTab) => void;
 }
-
-const ANSWER_OPTIONS = [
-  { label: 'Never', value: 1 },
-  { label: 'Rarely', value: 2 },
-  { label: 'Sometimes', value: 3 },
-  { label: 'Often', value: 4 },
-  { label: 'Always', value: 5 },
-];
 
 export const AssessmentRunnerView: React.FC<AssessmentRunnerViewProps> = ({
   protocol,
@@ -26,38 +18,157 @@ export const AssessmentRunnerView: React.FC<AssessmentRunnerViewProps> = ({
   selectedStudentName = 'Alex Johnson',
   onCompleteAssessment,
   onCancel,
+  setActiveTab,
 }) => {
-  const [currentStudent, setCurrentStudent] = useState<string>(selectedStudentName);
+  const [currentStudentName, setCurrentStudentName] = useState<string>(selectedStudentName);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
-  const [answers, setAnswers] = useState<Record<number, number>>({
-    1: 2,
-    2: 4,
-    3: 3,
-    4: 4,
-    5: 3,
-    6: 2,
-    7: 3, // Question 7 default as shown in Screen 5
-  });
+  const [answers, setAnswers] = useState<Record<number, number>>({});
+  const [assessmentId, setAssessmentId] = useState<number | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const totalQuestions = protocol.questions.length || 20;
-  const currentQuestion = protocol.questions[currentIndex] || {
-    id: currentIndex + 1,
-    text: 'Student shows frustration when tasks become difficult.',
-    domain: 'Stress',
+  // Initialize assessment on mount or when protocol/student changes
+  useEffect(() => {
+    let cancelled = false;
+    const startAssessment = async () => {
+      const student = students.find((s) => s.name === currentStudentName);
+      if (!student) return;
+
+      setIsLoading(true);
+      try {
+        const res = await fetch('/api/assessments/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            studentId: student.id,
+            assessmentTemplateId: Number(protocol.id),
+          }),
+        });
+        const data = await res.json();
+        if (data.success && !cancelled) {
+          setAssessmentId(data.assessment.id);
+          
+          const loadedAnswers: Record<number, number> = {};
+          if (data.assessment.responses) {
+            data.assessment.responses.forEach((r: any) => {
+              if (r.selectedOptionId) {
+                loadedAnswers[r.questionId] = r.selectedOptionId;
+              }
+            });
+          }
+          setAnswers(loadedAnswers);
+          
+          setCurrentIndex(0);
+        } else if (!data.success) {
+          toast.error(data.error || 'Failed to start assessment');
+        }
+      } catch (err) {
+        console.error('Error starting assessment:', err);
+        toast.error('Network error starting assessment');
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    };
+    startAssessment();
+    return () => { cancelled = true; };
+  }, [protocol.id, currentStudentName, students]);
+
+  // Autosave when answers change
+  useEffect(() => {
+    if (!assessmentId || Object.keys(answers).length === 0) return;
+
+    const timeoutId = setTimeout(async () => {
+      try {
+        const responsesData = Object.entries(answers).map(([qId, oId]) => ({
+          questionId: Number(qId),
+          selectedOptionId: oId,
+        }));
+        
+        await fetch(`/api/assessments/${assessmentId}/responses`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ responses: responsesData }),
+        });
+      } catch (e) {
+        console.error("Autosave failed", e);
+      }
+    }, 1000);
+
+    return () => clearTimeout(timeoutId);
+  }, [answers, assessmentId]);
+
+  const totalQuestions = protocol.questions.length || 0;
+  const currentQuestion = protocol.questions[currentIndex];
+
+  const progressPercent = totalQuestions > 0 ? Math.round(((currentIndex + 1) / totalQuestions) * 100) : 0;
+
+  const handleSelectOption = (optionId: number) => {
+    if (currentQuestion) {
+      setAnswers((prev) => ({ ...prev, [currentQuestion.id]: optionId }));
+    }
   };
 
-  const progressPercent = Math.round(((currentIndex + 1) / totalQuestions) * 100);
-
-  const handleSelectOption = (value: number) => {
-    setAnswers((prev) => ({ ...prev, [currentQuestion.id]: value }));
-  };
-
-  const handleNext = () => {
+  const handleNext = async () => {
     if (currentIndex < totalQuestions - 1) {
       setCurrentIndex(currentIndex + 1);
     } else {
+      await submitAssessment();
+    }
+  };
+
+  const submitAssessment = async () => {
+    if (!assessmentId) {
+      toast.error('No active assessment session');
+      return;
+    }
+    
+    // Validate all required questions answered
+    const unanswered = protocol.questions.filter(q => !answers[q.id]);
+    if (unanswered.length > 0) {
+      toast.error(`Please answer all questions. Missing ${unanswered.length} response(s).`);
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      // 1. Submit responses
+      const responsesData = Object.entries(answers).map(([qId, oId]) => ({
+        questionId: Number(qId),
+        selectedOptionId: oId,
+      }));
+      
+      const res1 = await fetch(`/api/assessments/${assessmentId}/responses`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ responses: responsesData }),
+      });
+      const data1 = await res1.json();
+      if (!data1.success) {
+        toast.error(data1.error || 'Failed to save responses');
+        setIsSubmitting(false);
+        return;
+      }
+
+      // 2. Complete assessment
+      const res2 = await fetch(`/api/assessments/${assessmentId}/complete`, {
+        method: 'POST',
+      });
+      const data2 = await res2.json();
+      if (!data2.success) {
+        toast.error(data2.error || 'Failed to complete assessment');
+        setIsSubmitting(false);
+        return;
+      }
+
       toast.success('Assessment completed successfully!');
-      onCompleteAssessment(currentStudent, answers);
+      
+      onCompleteAssessment(currentStudentName, answers, data2.assessment);
+
+    } catch (err) {
+      console.error('Error completing assessment:', err);
+      toast.error('Network error completing assessment');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -66,6 +177,23 @@ export const AssessmentRunnerView: React.FC<AssessmentRunnerViewProps> = ({
       setCurrentIndex(currentIndex - 1);
     }
   };
+
+  if (isLoading) {
+    return <div className="p-8 text-center text-slate-500">Initializing assessment...</div>;
+  }
+
+  if (!currentQuestion) {
+    return <div className="p-8 text-center text-slate-500">No questions available for this protocol.</div>;
+  }
+
+  // Fallback options if none provided from API
+  const displayOptions = currentQuestion.options || [
+    { id: 1, text: 'Never', score: 1 },
+    { id: 2, text: 'Rarely', score: 2 },
+    { id: 3, text: 'Sometimes', score: 3 },
+    { id: 4, text: 'Often', score: 4 },
+    { id: 5, text: 'Always', score: 5 },
+  ];
 
   return (
     <div className="p-8 max-w-4xl mx-auto space-y-6">
@@ -77,8 +205,8 @@ export const AssessmentRunnerView: React.FC<AssessmentRunnerViewProps> = ({
             <div className="flex items-center gap-2 mt-1">
               <span className="text-xs font-semibold text-slate-600">Student:</span>
               <select
-                value={currentStudent}
-                onChange={(e) => setCurrentStudent(e.target.value)}
+                value={currentStudentName}
+                onChange={(e) => setCurrentStudentName(e.target.value)}
                 className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
               >
                 {students.map((s) => (
@@ -125,12 +253,12 @@ export const AssessmentRunnerView: React.FC<AssessmentRunnerViewProps> = ({
 
         {/* Answer Options Radio List */}
         <div className="space-y-3 max-w-xl mx-auto">
-          {ANSWER_OPTIONS.map((opt) => {
-            const isSelected = answers[currentQuestion.id] === opt.value;
+          {displayOptions.map((opt) => {
+            const isSelected = answers[currentQuestion.id] === opt.id;
             return (
               <button
-                key={opt.value}
-                onClick={() => handleSelectOption(opt.value)}
+                key={opt.id}
+                onClick={() => handleSelectOption(opt.id)}
                 className={`w-full p-4 rounded-xl border text-left font-semibold text-sm transition-all duration-150 flex items-center gap-4 ${
                   isSelected
                     ? 'border-blue-600 bg-blue-50/50 text-blue-900 ring-2 ring-blue-600/20'
@@ -144,7 +272,7 @@ export const AssessmentRunnerView: React.FC<AssessmentRunnerViewProps> = ({
                 >
                   {isSelected && <div className="w-2 h-2 rounded-full bg-white"></div>}
                 </div>
-                <span>{opt.label}</span>
+                <span>{opt.text}</span>
               </button>
             );
           })}
@@ -155,7 +283,8 @@ export const AssessmentRunnerView: React.FC<AssessmentRunnerViewProps> = ({
       <div className="flex items-center justify-between pt-2">
         <button
           onClick={currentIndex === 0 ? onCancel : handlePrev}
-          className="inline-flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs"
+          disabled={isSubmitting}
+          className="inline-flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs disabled:opacity-50"
         >
           <ArrowLeft className="w-4 h-4" />
           {currentIndex === 0 ? 'Cancel' : 'Previous'}
@@ -163,13 +292,16 @@ export const AssessmentRunnerView: React.FC<AssessmentRunnerViewProps> = ({
 
         <button
           onClick={handleNext}
-          className="inline-flex items-center gap-2 px-6 py-2.5 bg-blue-700 text-white rounded-xl text-xs font-bold hover:bg-blue-800 shadow-sm transition-colors"
+          disabled={isSubmitting}
+          className="inline-flex items-center gap-2 px-6 py-2.5 bg-blue-700 text-white rounded-xl text-xs font-bold hover:bg-blue-800 shadow-sm transition-colors disabled:opacity-50"
         >
-          <span>{currentIndex === totalQuestions - 1 ? 'Finish Assessment' : 'Next'}</span>
-          {currentIndex === totalQuestions - 1 ? (
-            <CheckCircle2 className="w-4 h-4" />
-          ) : (
-            <ArrowRight className="w-4 h-4" />
+          <span>{isSubmitting ? 'Submitting...' : currentIndex === totalQuestions - 1 ? 'Finish Assessment' : 'Next'}</span>
+          {!isSubmitting && (
+            currentIndex === totalQuestions - 1 ? (
+              <CheckCircle2 className="w-4 h-4" />
+            ) : (
+              <ArrowRight className="w-4 h-4" />
+            )
           )}
         </button>
       </div>
