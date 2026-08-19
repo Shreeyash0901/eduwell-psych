@@ -2,6 +2,7 @@ import { Router, Response } from "express";
 import { prisma } from "../lib/db";
 import { requireAuth, AuthenticatedRequest } from "./middleware/auth";
 import { Prisma } from "../generated/prisma/client";
+import { sanitizeAssessmentForRole, getTeacherAccess, checkTeacherStudentAccess } from "./services/reportAccess";
 
 export const assessmentsRouter = Router();
 
@@ -73,20 +74,10 @@ assessmentsRouter.post("/start", async (req: AuthenticatedRequest, res: Response
     // Check teacher scope
     const isTeacher = req.user!.role.toUpperCase() === "TEACHER";
     if (isTeacher) {
-      const [classAccesses, sectionAccesses] = await Promise.all([
-        prisma.teacherClassAccess.findMany({ where: { userId: req.user!.id }, select: { classId: true } }),
-        prisma.teacherSectionAccess.findMany({ where: { userId: req.user!.id }, select: { sectionId: true } }),
-      ]);
-      const classIds = classAccesses.map((a) => a.classId);
-      const sectionIds = sectionAccesses.map((a) => a.sectionId);
-      
-      const hasAccess = 
-        (student.classId !== null && classIds.includes(student.classId)) ||
-        (student.sectionId !== null && sectionIds.includes(student.sectionId));
-        
+      const teacherAccess = await getTeacherAccess(req.user!.id);
+      const hasAccess = checkTeacherStudentAccess(teacherAccess, student);
       if (!hasAccess) {
-         // If teacher has assigned classes, enforce access.
-         return res.status(403).json({ success: false, error: "Forbidden: Student not in your assigned classes." });
+        return res.status(403).json({ success: false, error: "Forbidden: Student not in your assigned classes." });
       }
     }
 
@@ -127,7 +118,8 @@ assessmentsRouter.post("/start", async (req: AuthenticatedRequest, res: Response
       });
     }
 
-    return res.status(201).json({ success: true, assessment });
+    const safeAssessment = sanitizeAssessmentForRole(assessment as any, req.user!.role);
+    return res.status(201).json({ success: true, assessment: safeAssessment });
   } catch (error) {
     console.error("[ASSESSMENTS_API] POST /start error:", error);
     return res.status(500).json({ success: false, error: "Failed to start assessment." });
@@ -359,7 +351,8 @@ assessmentsRouter.post("/:id/complete", async (req: AuthenticatedRequest, res: R
     const txResults = await prisma.$transaction(txOperations);
     const updatedAssessment = txResults[txResults.length - 1];
 
-    return res.json({ success: true, assessment: updatedAssessment });
+    const safeAssessment = sanitizeAssessmentForRole(updatedAssessment as any, req.user!.role);
+    return res.json({ success: true, assessment: safeAssessment });
   } catch (error) {
     console.error("[ASSESSMENTS_API] POST /:id/complete error:", error);
     return res.status(500).json({ success: false, error: "Failed to complete assessment." });
@@ -392,38 +385,43 @@ assessmentsRouter.get("/student/:studentId", async (req: AuthenticatedRequest, r
     // Teacher RBAC scoping check
     const isTeacher = req.user!.role.toUpperCase() === "TEACHER";
     if (isTeacher) {
-      const [classAccesses, sectionAccesses] = await Promise.all([
-        prisma.teacherClassAccess.findMany({ where: { userId: req.user!.id }, select: { classId: true } }),
-        prisma.teacherSectionAccess.findMany({ where: { userId: req.user!.id }, select: { sectionId: true } }),
-      ]);
-      const classIds = classAccesses.map((a) => a.classId);
-      const sectionIds = sectionAccesses.map((a) => a.sectionId);
-      
-      const hasAccess = 
-        (student.classId !== null && classIds.includes(student.classId)) ||
-        (student.sectionId !== null && sectionIds.includes(student.sectionId));
-        
-      if (!hasAccess && (classIds.length > 0 || sectionIds.length > 0)) {
-         return res.status(403).json({ success: false, error: "Forbidden: Student not in your assigned classes." });
+      const teacherAccess = await getTeacherAccess(req.user!.id);
+      const hasAccess = checkTeacherStudentAccess(teacherAccess, student);
+      if (!hasAccess) {
+        return res.status(403).json({ success: false, error: "Forbidden: Student not in your assigned classes." });
       }
     }
 
-    const assessments = await prisma.studentAssessment.findMany({
+    const isPsychologist = req.user!.role.toUpperCase() === "PSYCHOLOGIST";
+
+    const rawAssessments = await prisma.studentAssessment.findMany({
       where: {
         schoolId,
         studentId: student.id,
       },
-      include: {
+      select: {
+        id: true,
+        studentId: true,
+        assessmentTemplateId: true,
+        startedAt: true,
+        completedAt: true,
+        status: true,
+        overallScore: true,
+        attentionLevel: true,
+        createdAt: true,
+        updatedAt: true,
+        professionalInterpretation: isPsychologist,
+        recommendations: isPsychologist,
         assessmentTemplate: {
           select: {
             name: true,
             description: true,
-            version: true
+            version: true,
           }
         },
         domainResults: {
           include: {
-            domain: true
+            domain: true,
           }
         }
       },
@@ -432,9 +430,12 @@ assessmentsRouter.get("/student/:studentId", async (req: AuthenticatedRequest, r
       }
     });
 
-    return res.json({ success: true, assessments });
+    const safeAssessments = rawAssessments.map(a => sanitizeAssessmentForRole(a as any, req.user!.role));
+
+    return res.json({ success: true, assessments: safeAssessments });
   } catch (error) {
     console.error("[ASSESSMENTS_API] GET /student/:studentId error:", error);
     return res.status(500).json({ success: false, error: "Failed to fetch student assessment history." });
   }
 });
+

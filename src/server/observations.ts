@@ -116,8 +116,9 @@ const observationInclude = {
 } as const;
 
 // Map a DB observation row into the safe UI shape. Psychologist notes and AI
-// insights are never exposed to teachers.
-function toSafeObservation(obs: any, isTeacher: boolean): any {
+// insights are only exposed to authorized psychologists within the same school.
+function toSafeObservation(obs: any, role: string): any {
+  const isPsychologist = (role || "").toUpperCase() === "PSYCHOLOGIST";
   const studentName =
     obs.student?.fullName ||
     [obs.student?.firstName, obs.student?.lastName].filter(Boolean).join(" ") ||
@@ -146,8 +147,8 @@ function toSafeObservation(obs: any, isTeacher: boolean): any {
     narrative: fullNarrative,
     triggers: obs.triggers || "",
     interventions: obs.interventions || "",
-    psychologistNotes: isTeacher ? "" : obs.psychologistNotes || "",
-    aiAnalysis: isTeacher ? undefined : obs.aiAnalysis || undefined,
+    psychologistNotes: isPsychologist ? obs.psychologistNotes || "" : "",
+    aiAnalysis: isPsychologist ? obs.aiAnalysis || undefined : undefined,
   };
 }
 
@@ -240,7 +241,7 @@ observationsRouter.get("/", async (req: AuthenticatedRequest, res: Response) => 
       }),
     ]);
 
-    const safeObservations = observations.map((o) => toSafeObservation(o, isTeacher));
+    const safeObservations = observations.map((o) => toSafeObservation(o, req.user!.role));
     const totalPages = Math.ceil(total / limit) || 1;
 
     return res.json({
@@ -287,7 +288,7 @@ observationsRouter.get("/:id", async (req: AuthenticatedRequest, res: Response) 
       return;
     }
 
-    return res.json({ success: true, observation: toSafeObservation(observation, isTeacher) });
+    return res.json({ success: true, observation: toSafeObservation(observation, req.user!.role) });
   } catch (error) {
     console.error("[OBSERVATIONS_API] GET /api/observations/:id error:", error);
     return res.status(500).json({
@@ -438,7 +439,7 @@ observationsRouter.post("/", async (req: AuthenticatedRequest, res: Response) =>
     return res.status(201).json({
       success: true,
       message: "Observation submitted successfully.",
-      observation: toSafeObservation({ ...created, recordNumber }, isTeacher),
+      observation: toSafeObservation({ ...created, recordNumber }, req.user!.role),
     });
   } catch (error) {
     console.error("[OBSERVATIONS_API] POST /api/observations error:", error);
@@ -509,7 +510,7 @@ observationsRouter.patch("/:id", requireRole("PSYCHOLOGIST", "ADMIN"), async (re
     return res.json({
       success: true,
       message: "Observation updated successfully.",
-      observation: toSafeObservation(updated, isTeacher),
+      observation: toSafeObservation(updated, req.user!.role),
     });
   } catch (error) {
     console.error("[OBSERVATIONS_API] PATCH /api/observations/:id error:", error);
