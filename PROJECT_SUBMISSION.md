@@ -2,7 +2,7 @@
 
 **Repository:** [https://github.com/Shreeyash0901/eduwell-psych.git](https://github.com/Shreeyash0901/eduwell-psych.git)  
 **Live Demo:** [https://shreeyash0901.github.io/eduwell-psych/](https://shreeyash0901.github.io/eduwell-psych/)  
-**Status:** Completed & Production Verified  
+**Status:** Completed & MVP/Demo Ready — Production hardening pending (see [docs/settings-traceability.md](docs/settings-traceability.md))  
 **Tech Stack:** React 19, TypeScript, Vite, Tailwind CSS, Lucide Icons, Sonner (Toasts), Express + Prisma ORM Backend  
 
 ---
