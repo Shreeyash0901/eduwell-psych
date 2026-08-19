@@ -73,6 +73,7 @@ model User {
   email        String   @unique @db.VarChar(255)
   passwordHash String   @map("password_hash") @db.VarChar(255)
   role         String   @default("TEACHER") @db.VarChar(30) // ADMIN, PSYCHOLOGIST, TEACHER
+  googleId     String?  @unique @map("google_id") @db.VarChar(255)
   status       String   @default("ACTIVE") @db.VarChar(20)
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
@@ -84,6 +85,8 @@ model User {
   createdAssessments    StudentAssessment[]  @relation("AssessmentCreatedBy")
   reviewedAssessments   StudentAssessment[]  @relation("AssessmentReviewedBy")
   generatedReports      Report[]             @relation("ReportGeneratedBy")
+  teacherClassAccesses   TeacherClassAccess[]
+  teacherSectionAccesses TeacherSectionAccess[]
 
   @@index([schoolId])
   @@map("users")
@@ -125,10 +128,11 @@ model Class {
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
 
-  school   School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  sections Section[]
-  students Student[]
-  reports  Report[]
+  school               School               @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  sections             Section[]
+  students             Student[]
+  reports              Report[]
+  teacherClassAccesses TeacherClassAccess[]
 
   @@index([schoolId])
   @@map("classes")
@@ -147,9 +151,10 @@ model Section {
   createdAt         DateTime @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
 
-  class    Class     @relation(fields: [classId], references: [id], onDelete: Cascade)
-  students Student[]
-  reports  Report[]
+  class                Class                @relation(fields: [classId], references: [id], onDelete: Cascade)
+  students             Student[]
+  reports                Report[]
+  teacherSectionAccesses TeacherSectionAccess[]
 
   @@index([classId])
   @@map("sections")
@@ -529,3 +534,42 @@ model ReportSnapshot {
   @@index([reportId])
   @@map("report_snapshots")
 }
+
+// ============================================================
+// 21. teacher_class_access — Teacher Class Permissions
+// ============================================================
+
+model TeacherClassAccess {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  classId   Int      @map("class_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  class Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, classId])
+  @@index([userId])
+  @@index([classId])
+  @@map("teacher_class_access")
+}
+
+// ============================================================
+// 22. teacher_section_access — Teacher Section Permissions
+// ============================================================
+
+model TeacherSectionAccess {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  sectionId Int      @map("section_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  section Section @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, sectionId])
+  @@index([userId])
+  @@index([sectionId])
+  @@map("teacher_section_access")
+}
+

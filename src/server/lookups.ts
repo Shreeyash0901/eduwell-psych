@@ -16,15 +16,58 @@ lookupsRouter.use(requireAuth);
 lookupsRouter.get("/student-filters", async (req: AuthenticatedRequest, res: Response) => {
   try {
     const schoolId = req.user!.schoolId; // Derived from verified JWT session
+    const isTeacher = req.user!.role.toUpperCase() === "TEACHER";
+    
+    const classWhere: any = { schoolId, isActive: true };
+    const sectionWhere: any = { class: { schoolId }, isActive: true };
+
+    if (isTeacher) {
+      const [classAccesses, sectionAccesses] = await Promise.all([
+        prisma.teacherClassAccess.findMany({
+          where: { userId: req.user!.id },
+          select: { classId: true },
+        }),
+        prisma.teacherSectionAccess.findMany({
+          where: { userId: req.user!.id },
+          select: { sectionId: true },
+        }),
+      ]);
+
+      const directClassIds = classAccesses.map((a) => a.classId);
+      const directSectionIds = sectionAccesses.map((a) => a.sectionId);
+
+      if (directClassIds.length === 0 && directSectionIds.length === 0) {
+        classWhere.id = { in: [] };
+        sectionWhere.id = { in: [] };
+      } else {
+        const classConditions: any[] = [];
+        if (directClassIds.length > 0) {
+          classConditions.push({ id: { in: directClassIds } });
+        }
+        if (directSectionIds.length > 0) {
+          classConditions.push({ sections: { some: { id: { in: directSectionIds } } } });
+        }
+        classWhere.OR = classConditions;
+
+        const sectionConditions: any[] = [];
+        if (directSectionIds.length > 0) {
+          sectionConditions.push({ id: { in: directSectionIds } });
+        }
+        if (directClassIds.length > 0) {
+          sectionConditions.push({ classId: { in: directClassIds } });
+        }
+        sectionWhere.OR = sectionConditions;
+      }
+    }
 
     const [classes, sections, academicSessions] = await Promise.all([
       prisma.class.findMany({
-        where: { schoolId, isActive: true },
+        where: classWhere,
         orderBy: { displayOrder: "asc" },
         select: { id: true, name: true },
       }),
       prisma.section.findMany({
-        where: { class: { schoolId }, isActive: true },
+        where: sectionWhere,
         orderBy: { name: "asc" },
         select: { id: true, name: true, classId: true },
       }),

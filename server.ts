@@ -27,10 +27,14 @@ const server = http.createServer(app);
 const PORT = serverConfig.port || 3000;
 
 // Security Headers with Helmet
+// crossOriginOpenerPolicy MUST be same-origin-allow-popups so that the
+// Google Identity Services popup (accounts.google.com/gsi/transform) can
+// post the credential JWT back to this window via postMessage.
 app.use(
   helmet({
     contentSecurityPolicy: false, // Disabled to allow Vite HMR and dynamic script loading in SPA development
     crossOriginEmbedderPolicy: false,
+    crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
   })
 );
 
@@ -159,10 +163,20 @@ async function setupViteOrStatic() {
       appType: "spa",
     });
     app.use(vite.middlewares);
+
+    // Re-assert COOP after Vite middlewares — Vite's internal dev server can
+    // inject its own Cross-Origin-Opener-Policy header that overwrites Helmet.
+    // This middleware runs after Vite and unconditionally stamps the correct
+    // value on every HTML response so the GIS popup can return its credential.
+    app.use((_req, res, next) => {
+      res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
+      next();
+    });
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (_req, res) => {
+      res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
       res.sendFile(path.join(distPath, "index.html"));
     });
   }

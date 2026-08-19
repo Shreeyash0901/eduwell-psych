@@ -239,6 +239,24 @@ async function main() {
     },
   });
 
+  // Optional Development Google SSO user — created ONLY when DEV_GOOGLE_TEST_EMAIL is configured.
+  // Keep personal emails out of this repository; set the variable locally in .env instead.
+  const devGoogleEmail = process.env.DEV_GOOGLE_TEST_EMAIL?.trim().toLowerCase();
+  if (devGoogleEmail) {
+    await prisma.user.upsert({
+      where: { email: devGoogleEmail },
+      update: { name: "Google SSO Test User", role: "PSYCHOLOGIST", status: "ACTIVE", passwordHash: defaultPasswordHash },
+      create: {
+        schoolId: school.id,
+        name: "Google SSO Test User",
+        email: devGoogleEmail,
+        passwordHash: defaultPasswordHash,
+        role: "PSYCHOLOGIST",
+        status: "ACTIVE",
+      },
+    });
+  }
+
   // If a legacy parent user exists from previous seeds, clean it up
   await prisma.user.deleteMany({
     where: { email: "parent.johnson@eduwell.org" },
@@ -246,6 +264,24 @@ async function main() {
 
   console.log(`  ✅ 5. Users: Admin, Psych, Teacher & Demo Staff Accounts (Password: password123)`);
 
+  // ── 5.5 Teacher Class & Section Access ─────────────────────
+  const teacherJenkins = await prisma.user.findUnique({ where: { email: "sarah.teacher@eduwell.org" } });
+  if (teacherJenkins) {
+    // Specific section access: Section 8B only
+    await prisma.teacherSectionAccess.upsert({
+      where: { userId_sectionId: { userId: teacherJenkins.id, sectionId: section8B.id } },
+      update: {},
+      create: { userId: teacherJenkins.id, sectionId: section8B.id },
+    });
+
+    // Whole class access: Grade 4 (all sections)
+    await prisma.teacherClassAccess.upsert({
+      where: { userId_classId: { userId: teacherJenkins.id, classId: class4.id } },
+      update: {},
+      create: { userId: teacherJenkins.id, classId: class4.id },
+    });
+  }
+  console.log(`  ✅ 5.5 Teacher Access assigned to Sarah Jenkins (Grade 4 all sections, Section 8B)`);
 
   // ── 6. Students (3 Synthetic Records) ──────────────────────
   const student1 = await prisma.student.upsert({

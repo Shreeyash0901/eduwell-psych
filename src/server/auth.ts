@@ -11,7 +11,7 @@ import { serverConfig } from "./env";
 
 export const authRouter = Router();
 
-const googleClient = new OAuth2Client();
+export const googleClient = new OAuth2Client();
 
 // Rate limiter for authentication endpoints: max 15 requests per 15 minutes per IP
 export const authLimiter = rateLimit({
@@ -177,14 +177,23 @@ authRouter.post("/google", authLimiter, async (req: Request, res: Response) => {
       });
     }
 
-    if (!googlePayload || !googlePayload.email) {
+    if (!googlePayload || !googlePayload.email || !googlePayload.sub) {
       return res.status(400).json({
         success: false,
-        error: "Invalid Google token payload: email missing.",
+        error: "Invalid Google token payload: email or sub missing.",
       });
     }
 
-    // 1. Require verified email from Google
+    // Verify Google token issuer
+    const validIssuers = ["accounts.google.com", "https://accounts.google.com"];
+    if (!googlePayload.iss || !validIssuers.includes(googlePayload.iss)) {
+      return res.status(401).json({
+        success: false,
+        error: "Invalid Google token issuer.",
+      });
+    }
+
+    // Require verified email from Google
     if (googlePayload.email_verified !== true && String(googlePayload.email_verified) !== "true") {
       return res.status(403).json({
         success: false,
@@ -192,15 +201,13 @@ authRouter.post("/google", authLimiter, async (req: Request, res: Response) => {
       });
     }
 
+    const googleSub = googlePayload.sub;
     const googleEmail = googlePayload.email.trim().toLowerCase();
 
-    // 2. Find existing ACTIVE PostgreSQL user (Strict whitelist - NO auto-creation of unknown users)
-    const user = await prisma.user.findFirst({
+    // 1. Look up user by stored Google sub/googleId
+    let user = await prisma.user.findFirst({
       where: {
-        email: {
-          equals: googleEmail,
-          mode: "insensitive",
-        },
+        googleId: googleSub,
       },
       include: {
         school: {
@@ -209,14 +216,44 @@ authRouter.post("/google", authLimiter, async (req: Request, res: Response) => {
       },
     });
 
+    // 2. If not found by googleId, link to existing authorized user by verified normalized email
+    if (!user) {
+      const existingUserByEmail = await prisma.user.findFirst({
+        where: {
+          email: {
+            equals: googleEmail,
+            mode: "insensitive",
+          },
+        },
+        include: {
+          school: {
+            select: { name: true },
+          },
+        },
+      });
+
+      if (existingUserByEmail && existingUserByEmail.status === "ACTIVE") {
+        user = await prisma.user.update({
+          where: { id: existingUserByEmail.id },
+          data: { googleId: googleSub },
+          include: {
+            school: {
+              select: { name: true },
+            },
+          },
+        });
+      }
+    }
+
+    // 3. Strict rejection if no authorized database user exists
     if (!user || user.status !== "ACTIVE") {
       return res.status(403).json({
         success: false,
-        error: "Access denied. No active authorized account found for this Google email. Please contact your school administrator.",
+        error: "Your account is not authorized. Contact your administrator.",
       });
     }
 
-    // 3. Issue application JWT with standard payload
+    // 4. Issue standard EduWell JWT token using database user ID and database role
     const tokenPayload = {
       id: user.id,
       schoolId: user.schoolId,
@@ -228,10 +265,10 @@ authRouter.post("/google", authLimiter, async (req: Request, res: Response) => {
       expiresIn: "7d",
     });
 
-    // 4. Set standard HttpOnly cookie
+    // 5. Set HttpOnly cookie
     res.cookie(serverConfig.cookieName, token, getCookieOptions());
 
-    // 5. Return safe user representation (no password hash)
+    // 6. Return safe user representation (no password hash)
     return res.json({
       success: true,
       user: toSafeUser(user),
@@ -280,7 +317,7 @@ authRouter.get("/me", async (req: Request, res: Response) => {
       });
     }
 
-    // Lookup fresh user from database to ensure status is still ACTIVE
+    // Lookup fresh user from database for every request
     const user = await prisma.user.findUnique({
       where: { id: decoded.id },
       include: {
