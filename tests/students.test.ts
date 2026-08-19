@@ -91,7 +91,8 @@ async function ensureTestDatabaseExists() {
 }
 
 function applyMigrationsToTestDatabase() {
-  execSync("npx prisma db push --accept-data-loss", { stdio: "inherit", env: { ...process.env, PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION: "yes" } });
+  console.log("  Applying migrations to the test database...");
+  execSync("npx prisma migrate deploy", { stdio: "inherit", env: process.env });
 }
 
 async function createFixtures() {
