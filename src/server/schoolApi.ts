@@ -4,6 +4,7 @@
 import { Router, Response } from "express";
 import { prisma } from "../lib/db";
 import { requireAuth, AuthenticatedRequest } from "./middleware/auth";
+import { requireRole } from "./middleware/role";
 import {
   testSchoolApiConnection,
   validateUrlForSsrf,
@@ -11,22 +12,10 @@ import {
 
 export const schoolApiRouter = Router();
 
-// Protect all endpoints with JWT authentication
+// Protect all endpoints with JWT authentication, then require the ADMIN role.
+// School API credentials and synchronization are ADMIN-only per specification.
 schoolApiRouter.use(requireAuth);
-
-// Middleware: Require ADMIN role
-function requireAdmin(req: AuthenticatedRequest, res: Response, next: () => void) {
-  const role = (req.user?.role || "").toUpperCase();
-  if (role !== "ADMIN") {
-    return res.status(403).json({
-      success: false,
-      error: "Forbidden: Only school administrators can view or manage School API integration.",
-    });
-  }
-  next();
-}
-
-schoolApiRouter.use(requireAdmin);
+schoolApiRouter.use(requireRole("ADMIN"));
 
 /**
  * GET /api/school-api/config

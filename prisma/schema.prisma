@@ -18,12 +18,22 @@ datasource db {
 // ============================================================
 
 model School {
-  id        Int      @id @default(autoincrement())
-  name      String   @db.VarChar(255)
-  code      String   @unique @db.VarChar(50)
-  status    String   @default("ACTIVE") @db.VarChar(20) // ACTIVE, INACTIVE
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
-  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
+  id           Int      @id @default(autoincrement())
+  name         String   @db.VarChar(255)
+  code         String   @unique @db.VarChar(50)
+  status       String   @default("ACTIVE") @db.VarChar(20) // ACTIVE, INACTIVE
+  // School profile (Phase 2)
+  addressLine1 String?  @map("address_line1") @db.VarChar(255)
+  addressLine2 String?  @map("address_line2") @db.VarChar(255)
+  city         String?  @db.VarChar(100)
+  state        String?  @db.VarChar(100)
+  postalCode   String?  @map("postal_code") @db.VarChar(20)
+  country      String?  @db.VarChar(100)
+  phone        String?  @db.VarChar(50)
+  website      String?  @db.VarChar(255)
+  logoUrl      String?  @map("logo_url") @db.VarChar(500)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
 
   apiConfigs          SchoolApiConfig[]
   users               User[]
@@ -36,8 +46,29 @@ model School {
   studentAssessments  StudentAssessment[]
   reports             Report[]
   schoolApiAuditLogs  SchoolApiAuditLog[]
+  schoolSettings      SchoolSettings?
 
   @@map("schools")
+}
+
+// ============================================================
+// 1.5 school_settings — One-to-One General School Preferences
+// ============================================================
+
+model SchoolSettings {
+  id                   Int      @id @default(autoincrement())
+  schoolId             Int      @unique @map("school_id")
+  defaultGradingSystem String?  @map("default_grading_system") @db.VarChar(50) // Values undefined by spec; nullable until validated
+  anonymizeExports     Boolean  @default(false) @map("anonymize_exports") // Conservative: exports NOT anonymized unless enabled
+  require2FA           Boolean  @default(false) @map("require_2fa") // 2FA enforcement not implemented yet
+  timezone             String   @default("UTC") @db.VarChar(50) // IANA timezone name (e.g. UTC, America/New_York)
+  locale               String   @default("en-US") @db.VarChar(10) // BCP-47 locale tag
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@map("school_settings")
 }
 
 // ============================================================
@@ -79,16 +110,16 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
 
-  school                School               @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  uploadedImports       StudentImport[]      @relation("ImportUploadedBy")
-  observationsSubmitted StudentObservation[] @relation("ObservationSubmittedBy")
-  createdTemplates      AssessmentTemplate[] @relation("TemplateCreatedBy")
-  createdAssessments    StudentAssessment[]  @relation("AssessmentCreatedBy")
-  reviewedAssessments   StudentAssessment[]  @relation("AssessmentReviewedBy")
-  generatedReports      Report[]             @relation("ReportGeneratedBy")
+  school                 School                 @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  uploadedImports        StudentImport[]        @relation("ImportUploadedBy")
+  observationsSubmitted  StudentObservation[]   @relation("ObservationSubmittedBy")
+  createdTemplates       AssessmentTemplate[]   @relation("TemplateCreatedBy")
+  createdAssessments     StudentAssessment[]    @relation("AssessmentCreatedBy")
+  reviewedAssessments    StudentAssessment[]    @relation("AssessmentReviewedBy")
+  generatedReports       Report[]               @relation("ReportGeneratedBy")
   teacherClassAccesses   TeacherClassAccess[]
   teacherSectionAccesses TeacherSectionAccess[]
-  schoolApiAuditLogs    SchoolApiAuditLog[]
+  schoolApiAuditLogs     SchoolApiAuditLog[]
 
   @@index([schoolId])
   @@map("users")
@@ -153,8 +184,8 @@ model Section {
   createdAt         DateTime @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
 
-  class                Class                @relation(fields: [classId], references: [id], onDelete: Cascade)
-  students             Student[]
+  class                  Class                  @relation(fields: [classId], references: [id], onDelete: Cascade)
+  students               Student[]
   reports                Report[]
   teacherSectionAccesses TeacherSectionAccess[]
 
@@ -283,10 +314,10 @@ model StudentObservation {
   student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
   submitter User    @relation("ObservationSubmittedBy", fields: [submittedBy], references: [id], onDelete: Restrict)
 
+  @@unique([schoolId, recordNumber])
   @@index([schoolId])
   @@index([studentId])
   @@index([submittedBy])
-  @@unique([schoolId, recordNumber])
   @@map("student_observations")
 }
 
@@ -608,4 +639,3 @@ model SchoolApiAuditLog {
   @@index([createdAt])
   @@map("school_api_audit_logs")
 }
-

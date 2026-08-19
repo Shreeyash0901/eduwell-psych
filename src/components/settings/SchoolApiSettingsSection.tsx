@@ -1,9 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
-import { Server, CheckCircle2, AlertTriangle, RefreshCw, Shield, Clock, ExternalLink, Activity } from 'lucide-react';
+import { Server, CheckCircle2, AlertTriangle, RefreshCw, Shield, Clock, Activity } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { FormField } from '../ui/FormField';
 import { Input } from '../ui/Input';
+import { Modal } from '../ui/Modal';
+import { useAuth } from '../../context/AuthContext';
+import { SectionLoading, SectionError, SectionCard, SectionPermissionDenied } from './SectionState';
 
 interface SchoolApiConfigData {
   id?: number;
@@ -28,6 +31,9 @@ interface AuditLogEntry {
 }
 
 export const SchoolApiSettingsSection: React.FC = () => {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
+
   const [config, setConfig] = useState<SchoolApiConfigData>({
     baseUrl: 'http://dmwerp.com/rest_school_assist/',
     schoolCode: 'test',
@@ -40,49 +46,65 @@ export const SchoolApiSettingsSection: React.FC = () => {
 
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [isSaving, setIsSaving] = useState<boolean>(false);
-  const [isTesting, setIsTesting] = useState<boolean>(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [permissionDenied, setPermissionDenied] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string; latencyMs?: number } | null>(null);
+  const [confirmDisableOpen, setConfirmDisableOpen] = useState(false);
+  const saveInFlight = useRef(false);
 
-  // Fetch Config and Audit Logs on Mount
-  useEffect(() => {
-    let cancelled = false;
+  const loadData = useCallback(async () => {
+    setIsLoading(true);
+    setLoadError(null);
+    try {
+      const [cfgRes, logsRes] = await Promise.all([
+        fetch('/api/school-api/config', { credentials: 'include' }),
+        fetch('/api/school-api/audit-logs', { credentials: 'include' }),
+      ]);
 
-    async function loadData() {
-      setIsLoading(true);
-      try {
-        const [cfgRes, logsRes] = await Promise.all([
-          fetch('/api/school-api/config', { credentials: 'include' }),
-          fetch('/api/school-api/audit-logs', { credentials: 'include' }),
-        ]);
-
-        const cfgData = await cfgRes.json();
-        const logsData = await logsRes.json();
-
-        if (!cancelled) {
-          if (cfgData.success && cfgData.config) {
-            setConfig(cfgData.config);
-          }
-          if (logsData.success && logsData.logs) {
-            setAuditLogs(logsData.logs);
-          }
-        }
-      } catch (err) {
-        console.error('[SCHOOL_API_SETTINGS] Failed to load config:', err);
-        toast.error('Failed to load School API configuration.');
-      } finally {
-        if (!cancelled) setIsLoading(false);
+      if (cfgRes.status === 403 || logsRes.status === 403) {
+        setPermissionDenied(true);
+        setIsLoading(false);
+        return;
       }
-    }
 
-    loadData();
-    return () => {
-      cancelled = true;
-    };
+      const cfgData = await cfgRes.json();
+      const logsData = await logsRes.json();
+
+      if (cfgData.success && cfgData.config) {
+        setConfig(cfgData.config);
+      }
+      if (logsData.success && logsData.logs) {
+        setAuditLogs(logsData.logs);
+      }
+    } catch (err) {
+      console.error('[SCHOOL_API_SETTINGS] Failed to load config:', err);
+      setLoadError('Failed to load School API configuration.');
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
-  const handleSaveConfig = async (e: React.FormEvent) => {
-    e.preventDefault();
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const reloadAuditLogs = async () => {
+    try {
+      const logsRes = await fetch('/api/school-api/audit-logs', { credentials: 'include' });
+      if (logsRes.status === 403) return;
+      const logsData = await logsRes.json();
+      if (logsData.success && logsData.logs) {
+        setAuditLogs(logsData.logs);
+      }
+    } catch {
+      // non-fatal; keep current logs
+    }
+  };
+
+  const persistConfig = async () => {
+    saveInFlight.current = true;
     setIsSaving(true);
     try {
       const res = await fetch('/api/school-api/config', {
@@ -91,6 +113,11 @@ export const SchoolApiSettingsSection: React.FC = () => {
         credentials: 'include',
         body: JSON.stringify(config),
       });
+
+      if (res.status === 403) {
+        setPermissionDenied(true);
+        throw new Error('You do not have permission to update School API settings.');
+      }
 
       const data = await res.json();
       if (!data.success) {
@@ -102,11 +129,33 @@ export const SchoolApiSettingsSection: React.FC = () => {
     } catch (err: any) {
       toast.error(err.message || 'Failed to save configuration.');
     } finally {
+      saveInFlight.current = false;
       setIsSaving(false);
     }
   };
 
+  const handleSaveConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (saveInFlight.current) {
+      toast.warning('A save is already in progress.');
+      return;
+    }
+
+    if (!config.baseUrl.trim() || !config.schoolCode.trim()) {
+      toast.error('API Base URL and School Code are required.');
+      return;
+    }
+
+    if (config.isEnabled === false) {
+      setConfirmDisableOpen(true);
+      return;
+    }
+
+    await persistConfig();
+  };
+
   const handleTestConnection = async () => {
+    if (isTesting) return;
     setIsTesting(true);
     setTestResult(null);
     try {
@@ -114,6 +163,12 @@ export const SchoolApiSettingsSection: React.FC = () => {
         method: 'POST',
         credentials: 'include',
       });
+
+      if (res.status === 403) {
+        setPermissionDenied(true);
+        setIsTesting(false);
+        return;
+      }
 
       const data = await res.json();
       setTestResult({
@@ -124,18 +179,12 @@ export const SchoolApiSettingsSection: React.FC = () => {
 
       if (data.success) {
         toast.success(`Connection verified (${data.latencyMs}ms)!`);
-        // Refresh audit logs & tested timestamp
         setConfig((prev) => ({ ...prev, lastTestedAt: new Date().toISOString() }));
       } else {
         toast.error(data.message || 'Connection test failed.');
       }
 
-      // Reload audit logs
-      const logsRes = await fetch('/api/school-api/audit-logs', { credentials: 'include' });
-      const logsData = await logsRes.json();
-      if (logsData.success && logsData.logs) {
-        setAuditLogs(logsData.logs);
-      }
+      await reloadAuditLogs();
     } catch (err: any) {
       setTestResult({
         success: false,
@@ -147,8 +196,24 @@ export const SchoolApiSettingsSection: React.FC = () => {
     }
   };
 
+  if (permissionDenied) {
+    return (
+      <SectionCard title="School API & Sync">
+        <SectionPermissionDenied message="School API configuration and synchronization are restricted to district administrators." />
+      </SectionCard>
+    );
+  }
+
   if (isLoading) {
-    return <div className="p-8 text-center text-slate-400 text-xs font-medium">Loading School API Settings...</div>;
+    return <SectionCard title="School API & Sync"><SectionLoading label="Loading School API settings..." /></SectionCard>;
+  }
+
+  if (loadError) {
+    return (
+      <SectionCard title="School API & Sync">
+        <SectionError message={loadError} onRetry={loadData} />
+      </SectionCard>
+    );
   }
 
   return (
@@ -190,6 +255,7 @@ export const SchoolApiSettingsSection: React.FC = () => {
                 onChange={(e) => setConfig({ ...config, baseUrl: e.target.value })}
                 placeholder="http://dmwerp.com/rest_school_assist/"
                 required
+                disabled={!isAdmin}
               />
             </FormField>
 
@@ -200,6 +266,7 @@ export const SchoolApiSettingsSection: React.FC = () => {
                 onChange={(e) => setConfig({ ...config, schoolCode: e.target.value })}
                 placeholder="test"
                 required
+                disabled={!isAdmin}
               />
             </FormField>
           </div>
@@ -211,6 +278,7 @@ export const SchoolApiSettingsSection: React.FC = () => {
                 value={config.appVersion}
                 onChange={(e) => setConfig({ ...config, appVersion: e.target.value })}
                 placeholder="1.1"
+                disabled={!isAdmin}
               />
             </FormField>
 
@@ -220,6 +288,7 @@ export const SchoolApiSettingsSection: React.FC = () => {
                 value={config.appOs}
                 onChange={(e) => setConfig({ ...config, appOs: e.target.value })}
                 placeholder="web"
+                disabled={!isAdmin}
               />
             </FormField>
 
@@ -229,12 +298,19 @@ export const SchoolApiSettingsSection: React.FC = () => {
                   type="checkbox"
                   checked={config.isEnabled}
                   onChange={(e) => setConfig({ ...config, isEnabled: e.target.checked })}
+                  disabled={!isAdmin}
                   className="rounded text-blue-700 focus:ring-blue-500 h-4 w-4"
                 />
                 Enable School API Synchronization
               </label>
             </div>
           </div>
+
+          {!isAdmin && (
+            <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 font-medium">
+              Read-only view. Only district administrators can modify School API settings.
+            </div>
+          )}
 
           {/* Connection status and actions */}
           <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -265,15 +341,17 @@ export const SchoolApiSettingsSection: React.FC = () => {
                 variant="secondary"
                 size="sm"
                 onClick={handleTestConnection}
-                disabled={isTesting || !config.isEnabled}
+                disabled={isTesting || !config.isEnabled || !isAdmin}
               >
                 <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isTesting ? 'animate-spin' : ''}`} />
                 {isTesting ? 'Testing Connection...' : 'Test Connection'}
               </Button>
 
-              <Button type="submit" size="sm" disabled={isSaving}>
-                {isSaving ? 'Saving...' : 'Save Settings'}
-              </Button>
+              {isAdmin && (
+                <Button type="submit" size="sm" disabled={isSaving}>
+                  {isSaving ? 'Saving...' : 'Save Settings'}
+                </Button>
+              )}
             </div>
           </div>
         </form>
@@ -361,6 +439,38 @@ export const SchoolApiSettingsSection: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {/* Confirmation dialog for disabling integration */}
+      <Modal
+        isOpen={confirmDisableOpen}
+        onClose={() => setConfirmDisableOpen(false)}
+        title="Disable School API synchronization?"
+        description="This will stop automatic student roster synchronization from the external School API."
+        icon={<AlertTriangle className="w-5 h-5 text-rose-600" />}
+        maxWidth="max-w-md"
+      >
+        <p className="text-xs text-slate-600 font-medium leading-relaxed">
+          Student records already synced into EduWell Psych will remain available, but new roster
+          updates from the School API will not be applied until synchronization is re-enabled.
+        </p>
+        <div className="flex items-center justify-end gap-3 pt-6">
+          <Button type="button" variant="secondary" size="sm" onClick={() => setConfirmDisableOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="danger"
+            size="sm"
+            isLoading={isSaving}
+            onClick={async () => {
+              await persistConfig();
+              setConfirmDisableOpen(false);
+            }}
+          >
+            {isSaving ? 'Saving...' : 'Yes, Disable Synchronization'}
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 };

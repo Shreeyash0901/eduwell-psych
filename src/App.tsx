@@ -621,7 +621,7 @@ function MainApplication() {
             />
           )}
 
-          {activeTab === 'settings' && <SettingsView setActiveTab={setActiveTab} />}
+          {activeTab === 'settings' && <SettingsView />}
         </main>
       </div>
 

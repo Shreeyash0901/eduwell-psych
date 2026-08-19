@@ -13,6 +13,7 @@ import { observationsRouter } from "./src/server/observations";
 import { assessmentsRouter } from "./src/server/assessments";
 import { reportsRouter } from "./src/server/reports";
 import { schoolApiRouter } from "./src/server/schoolApi";
+import { settingsRouter } from "./src/server/settings";
 import { requireAuth } from "./src/server/middleware/auth";
 import { serverConfig } from "./src/server/env";
 
@@ -57,6 +58,7 @@ app.use("/api/observations", observationsRouter);
 app.use("/api/assessments", assessmentsRouter);
 app.use("/api/reports", reportsRouter);
 app.use("/api/school-api", schoolApiRouter);
+app.use("/api/settings", settingsRouter);
 
 // Initialize Gemini API client on server
 const getGeminiClient = () => {

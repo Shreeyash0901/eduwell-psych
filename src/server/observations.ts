@@ -4,6 +4,8 @@
 import { Router, Response } from "express";
 import { prisma } from "../lib/db";
 import { requireAuth, AuthenticatedRequest } from "./middleware/auth";
+import { requireRole } from "./middleware/role";
+import { respondNotFound } from "./middleware/tenant";
 
 export const observationsRouter = Router();
 
@@ -94,9 +96,8 @@ async function teacherStudentScope(req: AuthenticatedRequest): Promise<{
   return { classIds, sectionIds, OR: orConditions };
 }
 
-function isPsychologistOrAdmin(req: AuthenticatedRequest): boolean {
-  const role = (req.user!.role || "").toUpperCase();
-  return role === "PSYCHOLOGIST" || role === "ADMIN";
+function isTeacherUser(req: AuthenticatedRequest): boolean {
+  return (req.user!.role || "").toUpperCase() === "TEACHER";
 }
 
 const observationInclude = {
@@ -282,11 +283,8 @@ observationsRouter.get("/:id", async (req: AuthenticatedRequest, res: Response) 
       include: observationInclude,
     });
 
-    if (!observation) {
-      return res.status(404).json({
-        success: false,
-        error: "Observation record not found or access unauthorized.",
-      });
+    if (respondNotFound(res, observation, schoolId, "Observation record not found or access unauthorized.")) {
+      return;
     }
 
     return res.json({ success: true, observation: toSafeObservation(observation, isTeacher) });
@@ -456,18 +454,10 @@ observationsRouter.post("/", async (req: AuthenticatedRequest, res: Response) =>
  * Update status or psychologist notes on an observation.
  * Role requirement: PSYCHOLOGIST or ADMIN only.
  */
-observationsRouter.patch("/:id", async (req: AuthenticatedRequest, res: Response) => {
+observationsRouter.patch("/:id", requireRole("PSYCHOLOGIST", "ADMIN"), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const schoolId = req.user!.schoolId;
-    const isTeacher = req.user!.role.toUpperCase() === "TEACHER";
-
-    // 1. Role authorization
-    if (!isPsychologistOrAdmin(req)) {
-      return res.status(403).json({
-        success: false,
-        error: "Forbidden: Only psychologists or administrators can update observations.",
-      });
-    }
+    const isTeacher = isTeacherUser(req);
 
     const idNum = parseInt(req.params.id, 10);
     if (isNaN(idNum) || idNum <= 0) {
@@ -505,11 +495,8 @@ observationsRouter.patch("/:id", async (req: AuthenticatedRequest, res: Response
       where: { schoolId, id: idNum },
     });
 
-    if (!observation) {
-      return res.status(404).json({
-        success: false,
-        error: "Observation record not found or access unauthorized.",
-      });
+    if (respondNotFound(res, observation, schoolId, "Observation record not found or access unauthorized.")) {
+      return;
     }
 
     // 4. Apply update

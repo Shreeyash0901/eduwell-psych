@@ -4,6 +4,8 @@
 import { Router, Response } from "express";
 import { prisma } from "../lib/db";
 import { requireAuth, AuthenticatedRequest } from "./middleware/auth";
+import { requireRole } from "./middleware/role";
+import { respondNotFound } from "./middleware/tenant";
 
 export const studentsRouter = Router();
 
@@ -263,11 +265,8 @@ studentsRouter.get("/:id", async (req: AuthenticatedRequest, res: Response) => {
       },
     });
 
-    if (!student) {
-      return res.status(404).json({
-        success: false,
-        error: "Student record not found or access unauthorized.",
-      });
+    if (respondNotFound(res, student, schoolId, "Student record not found or access unauthorized.")) {
+      return;
     }
 
     const currentSession = await prisma.academicSession.findFirst({
@@ -340,18 +339,9 @@ studentsRouter.get("/:id", async (req: AuthenticatedRequest, res: Response) => {
  * Enroll a new student into the authenticated school directory.
  * Role requirement: ADMIN only.
  */
-studentsRouter.post("/", async (req: AuthenticatedRequest, res: Response) => {
+studentsRouter.post("/", requireRole("ADMIN"), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const schoolId = req.user!.schoolId; // Derived strictly from verified auth token!
-    const userRole = (req.user!.role || "").toUpperCase();
-
-    // 1. Role Authorization check (ADMIN only)
-    if (userRole !== "ADMIN") {
-      return res.status(403).json({
-        success: false,
-        error: "Forbidden: Only school administrators are authorized to enroll new students.",
-      });
-    }
 
     const {
       studentId: rawStudentId,
@@ -629,19 +619,10 @@ studentsRouter.post("/", async (req: AuthenticatedRequest, res: Response) => {
  *   - studentNo: string (Required - student ID or admission number sent to API)
  *   - previewOnly?: boolean (Optional - if true, returns normalized data without persisting)
  */
-studentsRouter.post("/sync-one", async (req: AuthenticatedRequest, res: Response) => {
+studentsRouter.post("/sync-one", requireRole("ADMIN"), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const schoolId = req.user!.schoolId;
     const actorId = req.user!.id;
-    const userRole = (req.user!.role || "").toUpperCase();
-
-    // 1. Role Authorization check (ADMIN only)
-    if (userRole !== "ADMIN") {
-      return res.status(403).json({
-        success: false,
-        error: "Forbidden: Only school administrators are authorized to synchronize students from School API.",
-      });
-    }
 
     const { studentNo, previewOnly } = req.body;
     if (!studentNo || typeof studentNo !== "string" || !studentNo.trim()) {

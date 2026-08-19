@@ -26,6 +26,27 @@ async function main() {
   });
   console.log(`  ✅ 1. School: [${school.id}] ${school.name} (${school.code})`);
 
+  // ── 1.5 School Settings (one-to-one general preferences) ───
+  const schoolSettings = await prisma.schoolSettings.upsert({
+    where: { schoolId: school.id },
+    update: {
+      defaultGradingSystem: "Standard Letter (A-F)",
+      anonymizeExports: false,
+      require2FA: false,
+      timezone: "UTC",
+      locale: "en-US",
+    },
+    create: {
+      schoolId: school.id,
+      defaultGradingSystem: "Standard Letter (A-F)",
+      anonymizeExports: false,
+      require2FA: false,
+      timezone: "UTC",
+      locale: "en-US",
+    },
+  });
+  console.log(`  ✅ 1.5 School Settings: grading=${schoolSettings.defaultGradingSystem}, tz=${schoolSettings.timezone}`);
+
   // ── 2. School API Configuration ────────────────────────────
   const existingConfig = await prisma.schoolApiConfig.findFirst({
     where: { schoolId: school.id, schoolCode: "WESTSIDE_API" },
