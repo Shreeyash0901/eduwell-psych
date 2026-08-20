@@ -3,6 +3,8 @@ import { prisma } from "../lib/db";
 import { requireAuth, AuthenticatedRequest } from "./middleware/auth";
 import { Prisma } from "../generated/prisma/client";
 import { sanitizeAssessmentForRole, getTeacherAccess, checkTeacherStudentAccess } from "./services/reportAccess";
+import { NotificationService } from "./services/notificationService";
+import { NotificationType, NotificationPriority } from "../generated/prisma";
 
 export const assessmentsRouter = Router();
 
@@ -350,6 +352,40 @@ assessmentsRouter.post("/:id/complete", async (req: AuthenticatedRequest, res: R
 
     const txResults = await prisma.$transaction(txOperations);
     const updatedAssessment = txResults[txResults.length - 1];
+
+    // Notify Psychologists and Admins
+    try {
+      const student = await prisma.student.findUnique({
+        where: { id: assessment.studentId },
+        select: { fullName: true, firstName: true, lastName: true, studentId: true }
+      });
+      const studentName = student?.fullName || 
+        [student?.firstName, student?.lastName].filter(Boolean).join(" ") || 
+        student?.studentId || "a student";
+
+      const notificationService = new NotificationService(prisma as any);
+      const targetUsers = await prisma.user.findMany({
+        where: { schoolId, role: { in: ["ADMIN", "PSYCHOLOGIST"] } }
+      });
+
+      for (const target of targetUsers) {
+        if (target.id === req.user!.id) continue;
+
+        await notificationService.createNotification({
+          schoolId,
+          userId: target.id,
+          type: "ASSESSMENT",
+          priority: "NORMAL",
+          title: "Assessment Completed",
+          message: `${assessment.assessmentTemplate.name} completed for ${studentName}. Score: ${overallScore}, Level: ${overallAttentionLevel}.`,
+          entityType: "ASSESSMENT",
+          entityId: updatedAssessment.id,
+          dedupeKey: `assessment-complete-${updatedAssessment.id}-${target.id}`
+        });
+      }
+    } catch (notifyErr) {
+      console.error("Failed to notify users of assessment completion:", notifyErr);
+    }
 
     const safeAssessment = sanitizeAssessmentForRole(updatedAssessment as any, req.user!.role);
     return res.json({ success: true, assessment: safeAssessment });

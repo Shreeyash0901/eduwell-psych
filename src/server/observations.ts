@@ -6,6 +6,8 @@ import { prisma } from "../lib/db";
 import { requireAuth, AuthenticatedRequest } from "./middleware/auth";
 import { requireRole } from "./middleware/role";
 import { respondNotFound } from "./middleware/tenant";
+import { NotificationService } from "./services/notificationService";
+import { NotificationType, NotificationPriority } from "../generated/prisma";
 
 export const observationsRouter = Router();
 
@@ -435,6 +437,39 @@ observationsRouter.post("/", async (req: AuthenticatedRequest, res: Response) =>
       where: { id: created.id },
       data: { recordNumber },
     });
+
+    // 7. Notify Psychologists and Admins
+    try {
+      const notificationService = new NotificationService(prisma as any);
+      const targetUsers = await prisma.user.findMany({
+        where: { schoolId, role: { in: ["ADMIN", "PSYCHOLOGIST"] } }
+      });
+      
+      const studentName = created.student?.fullName || 
+        [created.student?.firstName, created.student?.lastName].filter(Boolean).join(" ") || 
+        created.student?.studentId || "a student";
+        
+      const safeCategory = category.length > 50 ? category.substring(0, 47) + "..." : category;
+
+      for (const target of targetUsers) {
+        // Prevent notifying the person who submitted it (if they are an admin/psychologist)
+        if (target.id === req.user!.id) continue;
+        
+        await notificationService.createNotification({
+          schoolId,
+          userId: target.id,
+          type: "URGENT",
+          priority: "HIGH",
+          title: "New Observation Submitted",
+          message: `Observation ${recordNumber} submitted for ${studentName} regarding ${safeCategory}.`,
+          entityType: "OBSERVATION",
+          entityId: created.id,
+          dedupeKey: `obs-creation-${created.id}-${target.id}`
+        });
+      }
+    } catch (notifyErr) {
+      console.error("Failed to notify users of new observation:", notifyErr);
+    }
 
     return res.status(201).json({
       success: true,

@@ -46,6 +46,7 @@ model School {
   studentAssessments  StudentAssessment[]
   reports             Report[]
   schoolApiAuditLogs  SchoolApiAuditLog[]
+  notifications       Notification[]
   schoolSettings      SchoolSettings?
 
   @@map("schools")
@@ -120,6 +121,7 @@ model User {
   teacherClassAccesses   TeacherClassAccess[]
   teacherSectionAccesses TeacherSectionAccess[]
   schoolApiAuditLogs     SchoolApiAuditLog[]
+  notifications          Notification[]
 
   @@index([schoolId])
   @@map("users")
@@ -638,4 +640,47 @@ model SchoolApiAuditLog {
   @@index([action])
   @@index([createdAt])
   @@map("school_api_audit_logs")
+}
+
+// ============================================================
+// 24. notifications — In-App Notifications
+// ============================================================
+
+enum NotificationType {
+  URGENT
+  ASSESSMENT
+  FEEDBACK
+  SYSTEM
+}
+
+enum NotificationPriority {
+  LOW
+  NORMAL
+  HIGH
+}
+
+model Notification {
+  id          Int                  @id @default(autoincrement())
+  schoolId    Int                  @map("school_id")
+  userId      Int                  @map("user_id")
+  type        NotificationType
+  priority    NotificationPriority @default(NORMAL)
+  title       String               @db.VarChar(255)
+  message     String               @db.Text
+  entityType  String?              @map("entity_type") @db.VarChar(50)
+  entityId    Int?                 @map("entity_id")
+  isRead      Boolean              @default(false) @map("is_read")
+  readAt      DateTime?            @map("read_at") @db.Timestamp(6)
+  dedupeKey   String?              @map("dedupe_key") @db.VarChar(255)
+  createdAt   DateTime             @default(now()) @map("created_at") @db.Timestamp(6)
+  expiresAt   DateTime?            @map("expires_at") @db.Timestamp(6)
+
+  school      School               @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  user        User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([schoolId, dedupeKey])
+  @@index([schoolId])
+  @@index([userId])
+  @@index([isRead])
+  @@map("notifications")
 }

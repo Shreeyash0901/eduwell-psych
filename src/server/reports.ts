@@ -13,6 +13,8 @@ import {
 } from "./services/reportAccess";
 import { generateReportData, ReportType } from "./services/reportService";
 import { generatePdfStream, generateCsvString } from "./services/exportService";
+import { NotificationService } from "./services/notificationService";
+import { NotificationType, NotificationPriority } from "../generated/prisma";
 
 export const reportsRouter = Router();
 
@@ -150,6 +152,40 @@ reportsRouter.post("/generate", async (req: AuthenticatedRequest, res: Response)
         contentJson: reportData as any,
       },
     });
+
+    // Notify Psychologists and Admins
+    try {
+      const notificationService = new NotificationService(prisma as any);
+      const targetUsers = await prisma.user.findMany({
+        where: { schoolId: actor.schoolId, role: { in: ["ADMIN", "PSYCHOLOGIST"] } }
+      });
+
+      let reportTarget = "School";
+      if (parsedStudentId) {
+        const s = await prisma.student.findUnique({ where: { id: parsedStudentId }, select: { fullName: true, studentId: true } });
+        reportTarget = s?.fullName || s?.studentId || "Student";
+      } else if (parsedClassId) {
+        reportTarget = "Class";
+      }
+
+      for (const target of targetUsers) {
+        if (target.id === actor.id) continue;
+        
+        await notificationService.createNotification({
+          schoolId: actor.schoolId,
+          userId: target.id,
+          type: "SYSTEM",
+          priority: "NORMAL",
+          title: "New Report Generated",
+          message: `${reportType} report '${report.title}' was generated for ${reportTarget}.`,
+          entityType: "REPORT",
+          entityId: report.id,
+          dedupeKey: `report-gen-${report.id}-${target.id}`
+        });
+      }
+    } catch (notifyErr) {
+      console.error("Failed to notify users of report generation:", notifyErr);
+    }
 
     return res.status(201).json({ success: true, report, snapshot: reportData });
   } catch (error: any) {

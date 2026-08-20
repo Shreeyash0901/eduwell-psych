@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Bell,
   AlertTriangle,
@@ -10,67 +10,79 @@ import {
   ChevronRight,
   Sparkles
 } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 
 export interface AppNotification {
-  id: string;
+  id: number;
   title: string;
-  description: string;
-  time: string;
-  type: 'urgent' | 'assessment' | 'feedback' | 'system';
+  message: string;
+  createdAt: string;
+  type: 'URGENT' | 'ASSESSMENT' | 'FEEDBACK' | 'SYSTEM';
   isRead: boolean;
-  linkTab?: string;
+  entityType?: string;
+  entityId?: number;
 }
-
-const initialNotifications: AppNotification[] = [
-  {
-    id: 'n1',
-    title: 'Urgent Behavioral Escalation',
-    description: 'Mr. Davis logged a task refusal & classroom escalation observation for Marcus Thorne.',
-    time: '10m ago',
-    type: 'urgent',
-    isRead: false,
-    linkTab: 'observations',
-  },
-  {
-    id: 'n2',
-    title: 'Assessment Review Required',
-    description: 'Cognitive Load assessment screener is ready for clinical interpretation (Alex Mercer).',
-    time: '1h ago',
-    type: 'assessment',
-    isRead: false,
-    linkTab: 'assessments',
-  },
-  {
-    id: 'n3',
-    title: 'New Parent Feedback Received',
-    description: 'Sarah Johnson submitted home sleep observations & morning anxiety notes for Alex Johnson.',
-    time: '3h ago',
-    type: 'feedback',
-    isRead: false,
-    linkTab: 'parent_feedback',
-  },
-  {
-    id: 'n4',
-    title: 'IEP Accommodation Finalized',
-    description: 'District 504 accommodation documentation has been archived for Elijah Vance.',
-    time: 'Yesterday',
-    type: 'system',
-    isRead: true,
-    linkTab: 'students',
-  },
-];
 
 interface NotificationDropdownProps {
   onNavigateTab?: (tab: string) => void;
 }
 
 export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({ onNavigateTab }) => {
+  const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
-  const [notifications, setNotifications] = useState<AppNotification[]>(initialNotifications);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const unreadCount = notifications.filter((n) => !n.isRead).length;
+  // Allow all logged-in staff/users to view notifications
+  const canReceiveNotifications = Boolean(user);
+
+  const fetchNotifications = useCallback(async () => {
+    if (!canReceiveNotifications) return;
+    try {
+      const res = await fetch('/api/notifications');
+      if (res.ok) {
+        const json = await res.json();
+        if (json?.data?.notifications) {
+          setNotifications(json.data.notifications);
+          setUnreadCount(json.data.unreadCount ?? 0);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to fetch notifications', e);
+    }
+  }, [canReceiveNotifications]);
+
+  const fetchUnreadCount = useCallback(async () => {
+    if (!canReceiveNotifications || isOpen) return; // Don't just poll count if dropdown is open (it fetches full)
+    try {
+      const res = await fetch('/api/notifications/unread-count');
+      if (res.ok) {
+        const json = await res.json();
+        if (typeof json?.count === 'number') {
+          setUnreadCount(json.count);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to fetch unread count', e);
+    }
+  }, [canReceiveNotifications, isOpen]);
+
+  // Polling for unread count every 60s
+  useEffect(() => {
+    if (!canReceiveNotifications) return;
+    fetchUnreadCount(); // Initial fetch
+    const interval = setInterval(fetchUnreadCount, 60000);
+    return () => clearInterval(interval);
+  }, [fetchUnreadCount, canReceiveNotifications]);
+
+  // Fetch full notifications when opened
+  useEffect(() => {
+    if (isOpen) {
+      fetchNotifications();
+    }
+  }, [isOpen, fetchNotifications]);
 
   // Handle outside click & escape key
   useEffect(() => {
@@ -96,25 +108,41 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({ onNa
     };
   }, [isOpen]);
 
-  const markAllAsRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+  const markAllAsRead = async () => {
+    try {
+      await fetch('/api/notifications/read-all', { method: 'PATCH' });
+      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+      setUnreadCount(0);
+    } catch (e) {
+      console.error('Failed to mark all as read', e);
+    }
   };
 
-  const markAsRead = (id: string) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
-    );
-  };
-
-  const removeNotification = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
+  const markAsRead = async (id: number) => {
+    try {
+      await fetch(`/api/notifications/${id}/read`, { method: 'PATCH' });
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
+      );
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+    } catch (e) {
+      console.error('Failed to mark as read', e);
+    }
   };
 
   const handleNotificationClick = (notification: AppNotification) => {
-    markAsRead(notification.id);
-    if (notification.linkTab && onNavigateTab) {
-      onNavigateTab(notification.linkTab);
+    if (!notification.isRead) {
+      markAsRead(notification.id);
+    }
+    
+    // Convert entityType to app tab
+    let targetTab = '';
+    if (notification.entityType === 'OBSERVATION') targetTab = 'observations';
+    if (notification.entityType === 'ASSESSMENT') targetTab = 'assessments';
+    if (notification.entityType === 'REPORT') targetTab = 'reports';
+
+    if (targetTab && onNavigateTab) {
+      onNavigateTab(targetTab);
       setIsOpen(false);
     }
   };
@@ -125,28 +153,39 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({ onNa
 
   const getIcon = (type: AppNotification['type']) => {
     switch (type) {
-      case 'urgent':
+      case 'URGENT':
         return <AlertTriangle className="w-4 h-4 text-rose-600" />;
-      case 'assessment':
+      case 'ASSESSMENT':
         return <ClipboardList className="w-4 h-4 text-blue-600" />;
-      case 'feedback':
+      case 'FEEDBACK':
         return <MessageSquareHeart className="w-4 h-4 text-amber-600" />;
-      case 'system':
+      case 'SYSTEM':
+      default:
         return <CheckCircle2 className="w-4 h-4 text-emerald-600" />;
     }
   };
 
   const getIconBg = (type: AppNotification['type']) => {
     switch (type) {
-      case 'urgent':
+      case 'URGENT':
         return 'bg-rose-50 border-rose-100';
-      case 'assessment':
+      case 'ASSESSMENT':
         return 'bg-blue-50 border-blue-100';
-      case 'feedback':
+      case 'FEEDBACK':
         return 'bg-amber-50 border-amber-100';
-      case 'system':
+      case 'SYSTEM':
+      default:
         return 'bg-emerald-50 border-emerald-100';
     }
+  };
+
+  const getTimeAgo = (dateStr: string) => {
+    const diff = Math.floor((new Date().getTime() - new Date(dateStr).getTime()) / 60000);
+    if (diff < 1) return 'Just now';
+    if (diff < 60) return `${diff}m ago`;
+    const hours = Math.floor(diff / 60);
+    if (hours < 24) return `${hours}h ago`;
+    return `${Math.floor(hours / 24)}d ago`;
   };
 
   return (
@@ -266,15 +305,15 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({ onNa
                         {item.title}
                       </h4>
                       <span className="text-[10px] font-medium text-slate-400 shrink-0">
-                        {item.time}
+                        {getTimeAgo(item.createdAt)}
                       </span>
                     </div>
 
                     <p className="text-[11px] text-slate-500 font-medium leading-relaxed line-clamp-2">
-                      {item.description}
+                      {item.message}
                     </p>
 
-                    {item.linkTab && (
+                    {item.entityType && (
                       <div className="pt-0.5 flex items-center gap-1 text-[10px] font-bold text-blue-700 group-hover:underline">
                         <span>View record</span>
                         <ChevronRight className="w-3 h-3" />
@@ -282,43 +321,18 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({ onNa
                     )}
                   </div>
 
-                  {/* Unread Dot & Dismiss Button */}
-                  <div className="flex flex-col items-center justify-between self-stretch shrink-0">
+                  {/* Unread Dot */}
+                  <div className="flex flex-col items-center justify-start pt-1 self-stretch shrink-0">
                     {!item.isRead ? (
                       <span className="w-2 h-2 rounded-full bg-blue-600 mt-1"></span>
                     ) : (
                       <span className="w-2 h-2"></span>
                     )}
-
-                    <button
-                      onClick={(e) => removeNotification(item.id, e)}
-                      className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-slate-600 rounded transition-opacity cursor-pointer"
-                      title="Dismiss"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
                   </div>
                 </div>
               ))
             )}
           </div>
-
-          {/* Footer */}
-          {notifications.length > 0 && (
-            <div className="p-2.5 bg-slate-50 border-t border-slate-100 text-center">
-              <button
-                onClick={() => {
-                  if (onNavigateTab) {
-                    onNavigateTab('observations');
-                  }
-                  setIsOpen(false);
-                }}
-                className="text-xs font-bold text-slate-600 hover:text-blue-700 transition-colors cursor-pointer"
-              >
-                View all priority triage queue &rarr;
-              </button>
-            </div>
-          )}
         </div>
       )}
     </div>
