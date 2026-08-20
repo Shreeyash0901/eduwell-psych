@@ -16,13 +16,25 @@ assessmentsRouter.use(requireTenant);
 /**
  * GET /api/assessments/templates
  * Fetch available assessment templates for the authenticated school.
+ * Supports ?status=all | PUBLISHED | DRAFT | ARCHIVED for staff.
  */
 assessmentsRouter.get("/templates", async (req: AuthenticatedRequest, res: Response) => {
   try {
     const schoolId = req.user!.schoolId;
+    const isStaff = ["ADMIN", "PSYCHOLOGIST"].includes(req.user!.role.toUpperCase());
+    const requestedStatus = req.query.status as string;
+
+    const statusFilter = isStaff && requestedStatus === "all"
+      ? undefined
+      : isStaff && requestedStatus
+      ? requestedStatus.toUpperCase()
+      : "PUBLISHED";
 
     const templates = await prisma.assessmentTemplate.findMany({
-      where: { schoolId, status: "PUBLISHED" },
+      where: {
+        schoolId,
+        ...(statusFilter ? { status: statusFilter } : {}),
+      },
       include: {
         domains: {
           orderBy: { displayOrder: "asc" },
@@ -35,13 +47,307 @@ assessmentsRouter.get("/templates", async (req: AuthenticatedRequest, res: Respo
             },
           },
         },
+        scoringRules: {
+          orderBy: { minScore: "asc" },
+        },
       },
+      orderBy: { id: "asc" },
     });
 
     return res.json({ success: true, templates });
   } catch (error) {
     console.error("[ASSESSMENTS_API] GET /templates error:", error);
     return res.status(500).json({ success: false, error: "Failed to fetch assessment templates." });
+  }
+});
+
+/**
+ * GET /api/assessments/templates/:id/full
+ * Deep query returning domains, questions, options, and scoring rules for builder preview.
+ */
+assessmentsRouter.get("/templates/:id/full", async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const schoolId = req.user!.schoolId;
+    const templateId = parseInt(req.params.id, 10);
+
+    if (isNaN(templateId)) {
+      return res.status(400).json({ success: false, error: "Invalid template ID" });
+    }
+
+    const template = await prisma.assessmentTemplate.findFirst({
+      where: { id: templateId, schoolId },
+      include: {
+        domains: {
+          orderBy: { displayOrder: "asc" },
+        },
+        questions: {
+          orderBy: { displayOrder: "asc" },
+          include: {
+            options: {
+              orderBy: { displayOrder: "asc" },
+            },
+          },
+        },
+        scoringRules: {
+          orderBy: { minScore: "asc" },
+        },
+      },
+    });
+
+    if (!template) {
+      return res.status(404).json({ success: false, error: "Assessment template not found." });
+    }
+
+    return res.json({ success: true, template });
+  } catch (error) {
+    console.error("[ASSESSMENTS_API] GET /templates/:id/full error:", error);
+    return res.status(500).json({ success: false, error: "Failed to fetch template detail." });
+  }
+});
+
+/**
+ * POST /api/assessments/templates
+ * Create a new assessment template with domains, questions, options, and scoring rules in a single $transaction.
+ */
+assessmentsRouter.post("/templates", async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const schoolId = req.user!.schoolId;
+    const userRole = req.user!.role.toUpperCase();
+
+    if (!["ADMIN", "PSYCHOLOGIST"].includes(userRole)) {
+      return res.status(403).json({ success: false, error: "Forbidden: Only Psychologists and Admins can build assessment templates." });
+    }
+
+    const { name, code, description, category, estimatedMinutes, version, status, domains, questions, scoringRules } = req.body;
+
+    if (!name || typeof name !== "string" || name.trim().length === 0) {
+      return res.status(400).json({ success: false, error: "Template name is required." });
+    }
+
+    const templateCategory = category ? String(category).trim() : "BEHAVIORAL";
+
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Create template
+      const newTemplate = await tx.assessmentTemplate.create({
+        data: {
+          schoolId,
+          name: name.trim(),
+          category: templateCategory,
+          description: description?.trim() || null,
+          estimatedMinutes: estimatedMinutes ? Number(estimatedMinutes) : 15,
+          version: version?.trim() || "1.0",
+          status: status === "PUBLISHED" ? "PUBLISHED" : "DRAFT",
+          createdBy: req.user!.id,
+        },
+      });
+
+      // 2. Create domains and track map: domainTempIndex / name -> created domain id
+      const domainMap = new Map<string | number, number>();
+      if (Array.isArray(domains) && domains.length > 0) {
+        for (let i = 0; i < domains.length; i++) {
+          const d = domains[i];
+          const createdDomain = await tx.assessmentDomain.create({
+            data: {
+              assessmentTemplateId: newTemplate.id,
+              name: d.name?.trim() || `Domain ${i + 1}`,
+              description: d.description?.trim() || null,
+              displayOrder: d.displayOrder ?? i,
+            },
+          });
+          if (d.tempId !== undefined) domainMap.set(d.tempId, createdDomain.id);
+          domainMap.set(createdDomain.name, createdDomain.id);
+          domainMap.set(i, createdDomain.id);
+        }
+      } else {
+        // Default general domain if none provided
+        const defaultDomain = await tx.assessmentDomain.create({
+          data: {
+            assessmentTemplateId: newTemplate.id,
+            name: "General",
+            description: "General screening criteria",
+            displayOrder: 0,
+          },
+        });
+        domainMap.set("General", defaultDomain.id);
+        domainMap.set(0, defaultDomain.id);
+      }
+
+      // 3. Create questions and options
+      if (Array.isArray(questions) && questions.length > 0) {
+        for (let qIdx = 0; qIdx < questions.length; qIdx++) {
+          const q = questions[qIdx];
+          const domainId =
+            (q.domainId && domainMap.get(q.domainId)) ||
+            (q.domainName && domainMap.get(q.domainName)) ||
+            (q.domainTempId !== undefined && domainMap.get(q.domainTempId)) ||
+            domainMap.get(0) ||
+            Array.from(domainMap.values())[0];
+
+          const createdQuestion = await tx.assessmentQuestion.create({
+            data: {
+              assessmentTemplateId: newTemplate.id,
+              domainId,
+              questionText: q.questionText?.trim() || `Question ${qIdx + 1}`,
+              questionType: q.questionType || "LIKERT",
+              isRequired: q.isRequired ?? true,
+              displayOrder: q.displayOrder ?? qIdx,
+            },
+          });
+
+          // Options
+          const opts = Array.isArray(q.options) && q.options.length > 0
+            ? q.options
+            : [
+                { label: "Never / Rarely", value: "rarely", score: 1 },
+                { label: "Sometimes", value: "sometimes", score: 2 },
+                { label: "Often", value: "often", score: 3 },
+                { label: "Almost Always", value: "always", score: 4 },
+              ];
+
+          for (let optIdx = 0; optIdx < opts.length; optIdx++) {
+            const opt = opts[optIdx];
+            await tx.assessmentOption.create({
+              data: {
+                questionId: createdQuestion.id,
+                label: opt.label?.trim() || opt.text?.trim() || `Option ${optIdx + 1}`,
+                value: opt.value?.trim() || `opt_${optIdx + 1}`,
+                score: new Prisma.Decimal(Number(opt.score ?? optIdx)),
+                displayOrder: opt.displayOrder ?? optIdx,
+              },
+            });
+          }
+        }
+      }
+
+      // 4. Create scoring rules
+      if (Array.isArray(scoringRules) && scoringRules.length > 0) {
+        for (const rule of scoringRules) {
+          const targetDomainId = rule.domainId
+            ? domainMap.get(rule.domainId) || null
+            : null;
+
+          await tx.assessmentScoringRule.create({
+            data: {
+              assessmentTemplateId: newTemplate.id,
+              scope: rule.scope || (targetDomainId ? "DOMAIN" : "OVERALL"),
+              domainId: targetDomainId,
+              minScore: new Prisma.Decimal(Number(rule.minScore ?? 0)),
+              maxScore: new Prisma.Decimal(Number(rule.maxScore ?? 100)),
+              resultLabel: rule.resultLabel?.trim() || "Standard Interpretation",
+              attentionLevel: rule.attentionLevel || "OPTIMAL",
+            },
+          });
+        }
+      }
+
+      return newTemplate;
+    });
+
+    // Re-fetch complete created template
+    const fullTemplate = await prisma.assessmentTemplate.findUnique({
+      where: { id: result.id },
+      include: {
+        domains: { orderBy: { displayOrder: "asc" } },
+        questions: {
+          orderBy: { displayOrder: "asc" },
+          include: { options: { orderBy: { displayOrder: "asc" } } },
+        },
+        scoringRules: { orderBy: { minScore: "asc" } },
+      },
+    });
+
+    return res.status(201).json({ success: true, template: fullTemplate });
+  } catch (error) {
+    console.error("[ASSESSMENTS_API] POST /templates error:", error);
+    return res.status(500).json({ success: false, error: "Failed to create assessment template." });
+  }
+});
+
+/**
+ * PATCH /api/assessments/templates/:id/status
+ * Toggle template status between DRAFT, PUBLISHED, ARCHIVED.
+ */
+assessmentsRouter.patch("/templates/:id/status", async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const schoolId = req.user!.schoolId;
+    const userRole = req.user!.role.toUpperCase();
+
+    if (!["ADMIN", "PSYCHOLOGIST"].includes(userRole)) {
+      return res.status(403).json({ success: false, error: "Forbidden: Only Psychologists and Admins can publish or archive templates." });
+    }
+
+    const templateId = parseInt(req.params.id, 10);
+    const { status } = req.body;
+
+    if (!["DRAFT", "PUBLISHED", "ARCHIVED"].includes(status)) {
+      return res.status(400).json({ success: false, error: "Invalid status. Must be DRAFT, PUBLISHED, or ARCHIVED." });
+    }
+
+    const template = await prisma.assessmentTemplate.findFirst({
+      where: { id: templateId, schoolId },
+    });
+
+    if (!template) {
+      return res.status(404).json({ success: false, error: "Assessment template not found." });
+    }
+
+    const updated = await prisma.assessmentTemplate.update({
+      where: { id: templateId },
+      data: { status },
+    });
+
+    return res.json({ success: true, template: updated });
+  } catch (error) {
+    console.error("[ASSESSMENTS_API] PATCH /templates/:id/status error:", error);
+    return res.status(500).json({ success: false, error: "Failed to update template status." });
+  }
+});
+
+/**
+ * DELETE /api/assessments/templates/:id
+ * Delete a draft template or archive if assessments exist.
+ */
+assessmentsRouter.delete("/templates/:id", async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const schoolId = req.user!.schoolId;
+    const userRole = req.user!.role.toUpperCase();
+
+    if (!["ADMIN", "PSYCHOLOGIST"].includes(userRole)) {
+      return res.status(403).json({ success: false, error: "Forbidden: Only Psychologists and Admins can delete templates." });
+    }
+
+    const templateId = parseInt(req.params.id, 10);
+
+    const template = await prisma.assessmentTemplate.findFirst({
+      where: { id: templateId, schoolId },
+      include: {
+        _count: {
+          select: { studentAssessments: true },
+        },
+      },
+    });
+
+    if (!template) {
+      return res.status(404).json({ success: false, error: "Assessment template not found." });
+    }
+
+    // If active assessments have used this template, archive rather than hard delete
+    if (template._count.studentAssessments > 0) {
+      const archived = await prisma.assessmentTemplate.update({
+        where: { id: templateId },
+        data: { status: "ARCHIVED" },
+      });
+      return res.json({ success: true, message: "Template is linked to student assessments and has been archived.", template: archived });
+    }
+
+    await prisma.assessmentTemplate.delete({
+      where: { id: templateId },
+    });
+
+    return res.json({ success: true, message: "Template deleted successfully." });
+  } catch (error) {
+    console.error("[ASSESSMENTS_API] DELETE /templates/:id error:", error);
+    return res.status(500).json({ success: false, error: "Failed to delete template." });
   }
 });
 

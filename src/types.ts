@@ -135,6 +135,8 @@ export interface AssessmentQuestionOption {
   id: number;
   text: string;
   score: number;
+  label?: string;
+  value?: number;
 }
 
 export interface AssessmentQuestion {

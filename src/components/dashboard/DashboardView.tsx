@@ -42,6 +42,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [stats, setStats] = useState({
     totalStudents: 0,
     newConcerns: 0,
+    unreviewedCount: 0,
     activeAssessments: 0,
     reportsCount: 0,
   });
@@ -66,15 +67,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         const templatesData = await templatesRes.json();
 
         if (!cancelled) {
-          const totalStudents = studentsData.success ? (studentsData.pagination?.total ?? studentsData.students?.length ?? 0) : students.length;
+          const totalStudents = studentsData.success
+            ? (studentsData.pagination?.total ?? studentsData.students?.length ?? 0)
+            : students.length;
           const liveObs = obsData.success ? (obsData.observations || []) : [];
-          const totalNewConcerns = obsData.success && obsData.pagination ? obsData.pagination.total : liveObs.length;
+          const totalConcerns = obsData.success && obsData.pagination ? obsData.pagination.total : liveObs.length;
+          const unreviewed = liveObs.filter((o: any) => o.status === 'New' || o.status === 'NEW').length;
           const totalReports = reportsData.success && reportsData.reports ? reportsData.reports.length : 0;
           const totalTemplates = templatesData.success && templatesData.templates ? templatesData.templates.length : 0;
 
           setStats({
             totalStudents,
-            newConcerns: totalNewConcerns,
+            newConcerns: totalConcerns,
+            unreviewedCount: unreviewed,
             activeAssessments: totalTemplates,
             reportsCount: totalReports,
           });
@@ -110,6 +115,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   }, [students]);
 
   const greetingName = user?.name ? user.name : 'Dr. Sarah Jenkins';
+
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+  };
 
 
 
@@ -355,7 +367,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
-            Good morning, {greetingName}
+            {getGreeting()}, {greetingName}
           </h1>
           <p className="text-sm text-slate-500 mt-1 font-medium">
             Review student concerns, assessments and reports.
@@ -409,21 +421,30 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
 
-        {/* NEW CONCERNS Card */}
+        {/* OBSERVATIONS Card */}
         <div
           onClick={() => setActiveTab('observations')}
-          className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col justify-between hover:border-amber-400 hover:shadow-xs transition-all cursor-pointer"
+          className={`bg-white border rounded-xl p-5 shadow-xs flex flex-col justify-between hover:shadow-xs transition-all cursor-pointer ${
+            stats.unreviewedCount > 0
+              ? 'border-amber-300 hover:border-amber-400 ring-1 ring-amber-200/50'
+              : 'border-slate-200 hover:border-amber-400'
+          }`}
         >
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold tracking-wider text-slate-500 uppercase">
               Observations
             </span>
-            <AlertTriangle className="w-4 h-4 text-amber-600" />
+            <AlertTriangle className={`w-4 h-4 ${stats.unreviewedCount > 0 ? 'text-amber-500 animate-pulse' : 'text-amber-600'}`} />
           </div>
-          <div className="mt-3">
+          <div className="mt-3 flex items-baseline justify-between">
             <span className="text-3xl font-extrabold text-slate-900 tracking-tight">
               {stats.newConcerns}
             </span>
+            {stats.unreviewedCount > 0 && (
+              <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                {stats.unreviewedCount} New
+              </span>
+            )}
           </div>
         </div>
 

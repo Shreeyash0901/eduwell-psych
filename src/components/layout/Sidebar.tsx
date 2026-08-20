@@ -11,7 +11,9 @@ import {
   LogOut,
   BrainCircuit,
   MessageSquareHeart,
-  GraduationCap
+  GraduationCap,
+  Building2,
+  ShieldCheck,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -33,6 +35,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   // Build role-tailored navigation items
   const getNavItems = () => {
+    if (role === 'super_admin') {
+      return [
+        { id: 'super_admin_dashboard' as ActiveTab, label: 'Platform Overview', icon: LayoutDashboard },
+        { id: 'super_admin_schools' as ActiveTab, label: 'Tenant Schools', icon: Building2 },
+        { id: 'super_admin_audit' as ActiveTab, label: 'Audit Logs', icon: ClipboardList },
+        { id: 'settings' as ActiveTab, label: 'Platform Settings', icon: Settings },
+      ];
+    }
+
     if (role === 'teacher') {
       return [
         { id: 'teacher_dashboard' as ActiveTab, label: 'Dashboard', icon: LayoutDashboard },
@@ -85,7 +96,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               EduWell Psych
             </h1>
             <p className="text-xs text-slate-500 font-medium mt-1">
-              Professional Suite
+              {role === 'super_admin' ? 'SaaS Control Plane' : 'Professional Suite'}
             </p>
           </div>
         </div>
@@ -101,7 +112,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div className="min-w-0 flex-1">
               <p className="text-xs font-bold text-slate-800 truncate">{user.name}</p>
               <p className="text-[10px] font-semibold text-blue-700 uppercase truncate">
-                {user.role}
+                {user.role === 'super_admin' ? 'SUPER ADMIN' : user.role}
               </p>
             </div>
           </div>
@@ -113,6 +124,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             const Icon = item.icon;
             const isActive =
               activeTab === item.id ||
+              (item.id === 'super_admin_dashboard' && (activeTab === 'dashboard' || activeTab === 'super_admin_dashboard')) ||
               (item.id === 'teacher_dashboard' && activeTab === 'teacher_add_concern') ||
               (item.id === 'observations' &&
                 (activeTab === 'observation_detail' || activeTab === 'teacher_add_concern')) ||

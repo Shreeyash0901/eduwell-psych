@@ -272,7 +272,7 @@ export const AssessmentRunnerView: React.FC<AssessmentRunnerViewProps> = ({
                 >
                   {isSelected && <div className="w-2 h-2 rounded-full bg-white"></div>}
                 </div>
-                <span>{opt.text}</span>
+                <span>{opt.label || opt.text}</span>
               </button>
             );
           })}

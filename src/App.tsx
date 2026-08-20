@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Sidebar } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
 import { DashboardView } from './components/dashboard/DashboardView';
@@ -151,41 +151,47 @@ function MainApplication() {
   // Live Data State
   const [protocols, setProtocols] = useState<AssessmentProtocol[]>([]);
 
+  const fetchProtocols = useCallback(async () => {
+    try {
+      const res = await fetch('/api/assessments/templates', { credentials: 'include' });
+      const dataTemplates = await res.json();
+      if (dataTemplates.success && Array.isArray(dataTemplates.templates)) {
+        const fetchedProtocols = dataTemplates.templates.map((t: any) => ({
+          id: String(t.id),
+          title: t.name,
+          description: t.description || '',
+          domains: t.domains.map((d: any) => d.name),
+          questionCount: t.questions.length,
+          estTime: `${t.estimatedMinutes || 15} mins`,
+          questions: t.questions.map((q: any) => ({
+            id: q.id,
+            text: q.questionText,
+            domain: t.domains.find((d: any) => d.id === q.domainId)?.name || 'General',
+            options: q.options?.map((o: any) => ({
+              id: o.id,
+              text: o.label || o.optionText || o.text || '',
+              label: o.label || o.optionText || o.text || '',
+              score: Number(o.score),
+            })),
+          })),
+        }));
+        if (fetchedProtocols.length > 0) {
+          setProtocols(fetchedProtocols);
+          setSelectedProtocol((prev) => prev || fetchedProtocols[0]);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch protocols:', err);
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     const fetchData = async () => {
       try {
-        const [resTemplates, resStudents] = await Promise.all([
-          fetch('/api/assessments/templates', { credentials: 'include' }),
-          fetch('/api/students?limit=100', { credentials: 'include' })
-        ]);
-        const dataTemplates = await resTemplates.json();
+        await fetchProtocols();
+        const resStudents = await fetch('/api/students?limit=100', { credentials: 'include' });
         const dataStudents = await resStudents.json();
-        
-        if (dataTemplates.success && !cancelled && Array.isArray(dataTemplates.templates)) {
-          const fetchedProtocols = dataTemplates.templates.map((t: any) => ({
-            id: String(t.id),
-            title: t.name,
-            description: t.description || '',
-            domains: t.domains.map((d: any) => d.name),
-            questionCount: t.questions.length,
-            estTime: '15-20 mins',
-            questions: t.questions.map((q: any) => ({
-              id: q.id,
-              text: q.questionText,
-              domain: t.domains.find((d: any) => d.id === q.domainId)?.name || 'General',
-              options: q.options?.map((o: any) => ({
-                id: o.id,
-                text: o.optionText,
-                score: Number(o.score)
-              }))
-            }))
-          }));
-          if (fetchedProtocols.length > 0) {
-            setProtocols(fetchedProtocols);
-            setSelectedProtocol(fetchedProtocols[0]);
-          }
-        }
         
         if (dataStudents.success && !cancelled && Array.isArray(dataStudents.students)) {
           const fetchedStudents = dataStudents.students.map((s: any) => ({
@@ -201,14 +207,14 @@ function MainApplication() {
           }
         }
       } catch (err) {
-        console.error('Failed to fetch data', err);
+        console.error("Failed to load initial data", err);
       }
     };
     if (currentUser) {
       fetchData();
     }
     return () => { cancelled = true; };
-  }, [currentUser]);
+  }, [currentUser, fetchProtocols]);
 
   // Active Selection State
   const [selectedObservationId, setSelectedObservationId] = useState<string | null>(null);
@@ -387,16 +393,6 @@ function MainApplication() {
     return <LoginView />;
   }
 
-  // ── Super Admin Layout — completely separate from tenant layout ──
-  if (currentUser.role === 'super_admin') {
-    return (
-      <>
-        <Toaster position="top-right" richColors />
-        <SuperAdminDashboard onSignOut={handleSignOut} />
-      </>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-slate-100/60 font-sans text-slate-800 flex antialiased">
       <Toaster position="top-right" richColors />
@@ -426,7 +422,16 @@ function MainApplication() {
         />
 
         <main className="flex-1 pb-16">
-          {activeTab === 'dashboard' && (
+          {currentUser.role === 'super_admin' ? (
+            <SuperAdminDashboard
+              activeTab={activeTab}
+              setActiveTab={setActiveTab}
+              searchQuery={searchQuery}
+              onSignOut={handleSignOut}
+            />
+          ) : (
+            <>
+              {activeTab === 'dashboard' && (
             <DashboardView
               students={students}
               user={currentUser}
@@ -484,6 +489,7 @@ function MainApplication() {
               protocols={protocols}
               onStartProtocol={handleStartProtocol}
               setActiveTab={setActiveTab}
+              onRefreshProtocols={fetchProtocols}
             />
           )}
 
@@ -541,7 +547,7 @@ function MainApplication() {
               studentId: 'STU-000',
               name: 'Student',
               grade: 'Grade 8',
-              school: 'EduWell',
+              schoolName: 'EduWell',
             };
             const targetStudent =
               students.find(
@@ -582,7 +588,7 @@ function MainApplication() {
               studentId: 'STU-000',
               name: 'Student',
               grade: 'Grade 8',
-              school: 'EduWell',
+              schoolName: 'EduWell',
             };
             const activeStudent =
               students.find((s) => s.name === activeAssessmentStudent) ||
@@ -654,6 +660,8 @@ function MainApplication() {
           )}
 
           {activeTab === 'settings' && <SettingsView />}
+            </>
+          )}
         </main>
       </div>
 

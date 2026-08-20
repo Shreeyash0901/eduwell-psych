@@ -1,18 +1,23 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { AssessmentProtocol, ActiveTab } from '../../types';
-import { Smile, Brain, Target, Play } from 'lucide-react';
+import { Smile, Brain, Target, Play, Plus, Sliders } from 'lucide-react';
+import { TemplateBuilderModal } from './TemplateBuilderModal';
 
 interface AssessmentsViewProps {
   protocols: AssessmentProtocol[];
   onStartProtocol: (protocol: AssessmentProtocol) => void;
   setActiveTab: (tab: ActiveTab) => void;
+  onRefreshProtocols?: () => void;
 }
 
 export const AssessmentsView: React.FC<AssessmentsViewProps> = ({
   protocols,
   onStartProtocol,
   setActiveTab,
+  onRefreshProtocols,
 }) => {
+  const [isBuilderOpen, setIsBuilderOpen] = useState(false);
+
   const getProtocolIcon = (id: string) => {
     switch (id) {
       case 'p1':
@@ -37,13 +42,23 @@ export const AssessmentsView: React.FC<AssessmentsViewProps> = ({
           </p>
         </div>
 
-        <button
-          onClick={() => setActiveTab('psychologist_interpretation')}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 rounded-lg text-sm font-semibold shadow-2xs transition-colors shrink-0 cursor-pointer"
-        >
-          <Brain className="w-4 h-4 text-indigo-600" />
-          <span>Clinical Interpretation</span>
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setIsBuilderOpen(true)}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold shadow-xs transition-colors shrink-0 cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Create Protocol</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('psychologist_interpretation')}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 rounded-lg text-sm font-semibold shadow-2xs transition-colors shrink-0 cursor-pointer"
+          >
+            <Brain className="w-4 h-4 text-indigo-600" />
+            <span>Clinical Interpretation</span>
+          </button>
+        </div>
       </div>
 
       {/* Protocol Cards Grid */}
@@ -101,6 +116,13 @@ export const AssessmentsView: React.FC<AssessmentsViewProps> = ({
           </div>
         ))}
       </div>
+
+      {/* Visual Assessment Template Builder Modal */}
+      <TemplateBuilderModal
+        isOpen={isBuilderOpen}
+        onClose={() => setIsBuilderOpen(false)}
+        onTemplateCreated={onRefreshProtocols}
+      />
     </div>
   );
 };

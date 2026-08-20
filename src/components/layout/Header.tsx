@@ -30,7 +30,11 @@ export const Header: React.FC<HeaderProps> = ({
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search observations, students, assessments..."
+          placeholder={
+            user?.role === 'super_admin'
+              ? 'Search schools, tenants, audit logs, platform...'
+              : 'Search observations, students, assessments...'
+          }
           className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs sm:text-sm text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
         />
       </div>
