@@ -4,6 +4,20 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
+import helmet from "helmet";
+import cookieParser from "cookie-parser";
+import { authRouter } from "./src/server/auth";
+import { studentsRouter } from "./src/server/students";
+import { lookupsRouter } from "./src/server/lookups";
+import { observationsRouter } from "./src/server/observations";
+import { assessmentsRouter } from "./src/server/assessments";
+import { reportsRouter } from "./src/server/reports";
+import { schoolApiRouter } from "./src/server/schoolApi";
+import { settingsRouter } from "./src/server/settings";
+import { notificationsRouter } from "./src/server/notifications";
+import { superAdminRouter } from "./src/server/superAdmin";
+import { requireAuth } from "./src/server/middleware/auth";
+import { serverConfig } from "./src/server/env";
 
 dotenv.config();
 
@@ -18,9 +32,37 @@ if (import.meta.url) {
 
 const app = express();
 const server = http.createServer(app);
-const PORT = 3000;
+const PORT = serverConfig.port || 3000;
 
+// Security Headers with Helmet
+// crossOriginOpenerPolicy MUST be same-origin-allow-popups so that the
+// Google Identity Services popup (accounts.google.com/gsi/transform) can
+// post the credential JWT back to this window via postMessage.
+app.use(
+  helmet({
+    contentSecurityPolicy: false, // Disabled to allow Vite HMR and dynamic script loading in SPA development
+    crossOriginEmbedderPolicy: false,
+    crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
+  })
+);
+
+// Cookie Parser for HttpOnly Auth Token handling
+app.use(cookieParser());
+
+// JSON Body Parser
 app.use(express.json());
+
+// Mount API Routers
+app.use("/api/auth", authRouter);
+app.use("/api/students", studentsRouter);
+app.use("/api/lookups", lookupsRouter);
+app.use("/api/observations", observationsRouter);
+app.use("/api/assessments", assessmentsRouter);
+app.use("/api/reports", reportsRouter);
+app.use("/api/school-api", schoolApiRouter);
+app.use("/api/settings", settingsRouter);
+app.use("/api/notifications", notificationsRouter);
+app.use("/api/super-admin", superAdminRouter);
 
 // Initialize Gemini API client on server
 const getGeminiClient = () => {
@@ -42,7 +84,7 @@ app.get("/api/health", (_req, res) => {
 });
 
 // AI Observation Analysis endpoint
-app.post("/api/gemini/analyze-observation", async (req, res) => {
+app.post("/api/gemini/analyze-observation", requireAuth, async (req, res) => {
   try {
     const { studentName, grade, narrative, triggers, interventions } = req.body;
     const ai = getGeminiClient();
@@ -84,7 +126,7 @@ Keep tone objective, supportive, and formatted in clear sections with bullet poi
 });
 
 // AI Assessment Interpretation endpoint
-app.post("/api/gemini/assessment-summary", async (req, res) => {
+app.post("/api/gemini/assessment-summary", requireAuth, async (req, res) => {
   try {
     const { studentName, assessmentName, scores, overallScore } = req.body;
     const ai = getGeminiClient();
@@ -136,10 +178,20 @@ async function setupViteOrStatic() {
       appType: "spa",
     });
     app.use(vite.middlewares);
+
+    // Re-assert COOP after Vite middlewares — Vite's internal dev server can
+    // inject its own Cross-Origin-Opener-Policy header that overwrites Helmet.
+    // This middleware runs after Vite and unconditionally stamps the correct
+    // value on every HTML response so the GIS popup can return its credential.
+    app.use((_req, res, next) => {
+      res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
+      next();
+    });
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (_req, res) => {
+      res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
       res.sendFile(path.join(distPath, "index.html"));
     });
   }

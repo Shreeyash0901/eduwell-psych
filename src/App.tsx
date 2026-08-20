@@ -20,28 +20,34 @@ import { AssessmentSetupView } from './components/assessments/AssessmentSetupVie
 import { LoginView } from './components/auth/LoginView';
 import { NewObservationModal } from './components/observations/NewObservationModal';
 import { NewAssessmentModal } from './components/assessments/NewAssessmentModal';
+import { SuperAdminDashboard } from './components/super-admin/SuperAdminDashboard';
 import { Toaster } from 'sonner';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { Brain } from 'lucide-react';
 
-import {
-  initialStudents,
-  initialObservations,
-  assessmentProtocols,
-  sampleAssessmentResult,
-  demoUsers,
-} from './data/mockData';
 import {
   ActiveTab,
   Student,
   ObservationRecord,
   AssessmentProtocol,
   AssessmentResult,
-  UserSession,
   UserRole,
 } from './types';
 
+const DEFAULT_PROTOCOL: AssessmentProtocol = {
+  id: '1',
+  title: 'Standard Screening Protocol',
+  description: 'Standardized psychological and behavioral screening protocol.',
+  domains: ['Emotional', 'Behavioral'],
+  questionCount: 0,
+  estTime: '15-20 mins',
+  questions: [],
+};
+
 const getTabFromPath = (): ActiveTab => {
-  // Check hash first (e.g. #/teacher-add-concern or #teacher_add_concern)
-  const hash = window.location.hash.replace(/^#\/?/, '').toLowerCase().trim();
+  // Check hash first (e.g. #/teacher-add-concern or #student_profile?id=1)
+  const rawHash = window.location.hash.replace(/^#\/?/, '').toLowerCase().trim();
+  const hash = rawHash.split('?')[0].split('/')[0];
   
   // Check URL query parameters (e.g. ?tab=teacher_add_concern)
   const urlParams = new URLSearchParams(window.location.search);
@@ -82,20 +88,17 @@ const getTabFromPath = (): ActiveTab => {
   return 'dashboard';
 };
 
-export default function App() {
-  const [currentUser, setCurrentUser] = useState<UserSession | null>(() => {
-    try {
-      const saved = localStorage.getItem('eduwell_user');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error(e);
-    }
-    return demoUsers[0]; // Default authenticated as Dr. Sarah Jenkins (Psychologist)
-  });
+function MainApplication() {
+  const { user: currentUser, isLoading: isAuthLoading, logout, login } = useAuth();
 
   const [activeTab, setActiveTabState] = useState<ActiveTab>(() => getTabFromPath());
-  const [students, setStudents] = useState<Student[]>(initialStudents);
-  const [selectedProfileStudent, setSelectedProfileStudent] = useState<Student>(initialStudents[0]);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [selectedProfileStudent, setSelectedProfileStudent] = useState<Student | null>(null);
+  const [selectedProfileStudentId, setSelectedProfileStudentId] = useState<string | number | null>(() => {
+    const hash = window.location.hash;
+    const match = hash.match(/[#?]id=([^&]+)/) || hash.match(/#student_profile\/([^?&]+)/);
+    return match ? match[1] : null;
+  });
 
   const setActiveTab = (tab: ActiveTab) => {
     setActiveTabState(tab);
@@ -106,38 +109,29 @@ export default function App() {
     }
   };
 
-  const handleLogin = (user: UserSession) => {
-    setCurrentUser(user);
-    try {
-      localStorage.setItem('eduwell_user', JSON.stringify(user));
-    } catch (e) {
-      console.error(e);
+  useEffect(() => {
+    if (currentUser) {
+      if (activeTab === 'login') {
+        if (currentUser.role === 'super_admin') {
+          setActiveTab('super_admin_dashboard');
+        } else if (currentUser.role === 'teacher') {
+          setActiveTab('teacher_dashboard');
+        } else if (currentUser.role === 'parent') {
+          setActiveTab('parent_feedback');
+        } else {
+          setActiveTab('dashboard');
+        }
+      }
+      // Guard: SUPER_ADMIN must never see the tenant layout
+      if (currentUser.role === 'super_admin' && !activeTab.startsWith('super_admin')) {
+        setActiveTab('super_admin_dashboard');
+      }
     }
+  }, [currentUser]);
 
-    if (user.role === 'teacher') {
-      setActiveTab('teacher_dashboard');
-    } else if (user.role === 'parent') {
-      setActiveTab('parent_feedback');
-    } else if (user.role === 'admin') {
-      setActiveTab('dashboard');
-    } else {
-      setActiveTab('dashboard');
-    }
-  };
-
-  const handleSignOut = () => {
-    setCurrentUser(null);
-    try {
-      localStorage.removeItem('eduwell_user');
-    } catch (e) {
-      console.error(e);
-    }
+  const handleSignOut = async () => {
+    await logout();
     setActiveTab('login');
-  };
-
-  const handleSwitchRole = (role: UserRole) => {
-    const targetUser = demoUsers.find((u) => u.role === role) || demoUsers[0];
-    handleLogin(targetUser);
   };
 
   useEffect(() => {
@@ -154,21 +148,75 @@ export default function App() {
 
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  // Data State
-  const [observations, setObservations] = useState<ObservationRecord[]>(initialObservations);
-  const [protocols] = useState<AssessmentProtocol[]>(assessmentProtocols);
+  // Live Data State
+  const [protocols, setProtocols] = useState<AssessmentProtocol[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchData = async () => {
+      try {
+        const [resTemplates, resStudents] = await Promise.all([
+          fetch('/api/assessments/templates', { credentials: 'include' }),
+          fetch('/api/students?limit=100', { credentials: 'include' })
+        ]);
+        const dataTemplates = await resTemplates.json();
+        const dataStudents = await resStudents.json();
+        
+        if (dataTemplates.success && !cancelled && Array.isArray(dataTemplates.templates)) {
+          const fetchedProtocols = dataTemplates.templates.map((t: any) => ({
+            id: String(t.id),
+            title: t.name,
+            description: t.description || '',
+            domains: t.domains.map((d: any) => d.name),
+            questionCount: t.questions.length,
+            estTime: '15-20 mins',
+            questions: t.questions.map((q: any) => ({
+              id: q.id,
+              text: q.questionText,
+              domain: t.domains.find((d: any) => d.id === q.domainId)?.name || 'General',
+              options: q.options?.map((o: any) => ({
+                id: o.id,
+                text: o.optionText,
+                score: Number(o.score)
+              }))
+            }))
+          }));
+          if (fetchedProtocols.length > 0) {
+            setProtocols(fetchedProtocols);
+            setSelectedProtocol(fetchedProtocols[0]);
+          }
+        }
+        
+        if (dataStudents.success && !cancelled && Array.isArray(dataStudents.students)) {
+          const fetchedStudents = dataStudents.students.map((s: any) => ({
+            id: String(s.id),
+            studentId: s.studentId,
+            name: s.fullName || s.firstName + " " + s.lastName,
+            grade: s.class?.name || 'N/A',
+            school: s.schoolName || 'EduWell'
+          }));
+          if (fetchedStudents.length > 0) {
+            setStudents(fetchedStudents);
+            setSelectedProfileStudent((prev) => prev || fetchedStudents[0]);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch data', err);
+      }
+    };
+    if (currentUser) {
+      fetchData();
+    }
+    return () => { cancelled = true; };
+  }, [currentUser]);
 
   // Active Selection State
-  const [selectedObservation, setSelectedObservation] = useState<ObservationRecord>(
-    initialObservations[0]
-  );
-  const [selectedProtocol, setSelectedProtocol] = useState<AssessmentProtocol>(
-    assessmentProtocols[0]
-  );
-  const [activeAssessmentStudent, setActiveAssessmentStudent] = useState<string>('Alex Johnson');
-  const [assessmentResult, setAssessmentResult] = useState<AssessmentResult>(
-    sampleAssessmentResult
-  );
+  const [selectedObservationId, setSelectedObservationId] = useState<string | null>(null);
+  const [observationRefreshKey, setObservationRefreshKey] = useState<number>(0);
+  const [observationCount, setObservationCount] = useState<number>(0);
+  const [selectedProtocol, setSelectedProtocol] = useState<AssessmentProtocol>(DEFAULT_PROTOCOL);
+  const [activeAssessmentStudent, setActiveAssessmentStudent] = useState<string>('');
+  const [assessmentResult, setAssessmentResult] = useState<AssessmentResult | null>(null);
   const [psychologistReportData, setPsychologistReportData] = useState<{
     studentName?: string;
     clinicalInterpretation?: string;
@@ -181,9 +229,33 @@ export default function App() {
 
   // Navigation Handlers
   const handleSelectObservation = (obs: ObservationRecord) => {
-    setSelectedObservation(obs);
+    setSelectedObservationId(obs.id);
     setActiveTab('observation_detail');
   };
+
+  const handleObservationRefresh = () => {
+    setObservationRefreshKey((k) => k + 1);
+  };
+
+  // Keep the sidebar observation badge count fresh
+  useEffect(() => {
+    let cancelled = false;
+    const fetchObservationCount = async () => {
+      try {
+        const res = await fetch('/api/observations?limit=1&page=1', { credentials: 'include' });
+        const data = await res.json();
+        if (data.success && !cancelled) {
+          setObservationCount(data.pagination?.total ?? 0);
+        }
+      } catch {
+        // Non-critical badge count; ignore failures
+      }
+    };
+    fetchObservationCount();
+    return () => {
+      cancelled = true;
+    };
+  }, [observationRefreshKey, activeTab]);
 
   const handleStartAssessmentFromObs = (studentName: string) => {
     setActiveAssessmentStudent(studentName);
@@ -205,28 +277,36 @@ export default function App() {
 
   const handleCompleteAssessment = (
     studentName: string,
-    answers: Record<number, number>
+    answers: Record<number, number>,
+    serverAssessment?: any
   ) => {
-    // Calculate simple dynamic scores based on answers
-    const values = Object.values(answers);
-    const meanVal = values.length
-      ? values.reduce((a, b) => a + b, 0) / values.length
-      : 3;
-    const overallScore = Math.round((meanVal / 5) * 100);
+    const student = students.find((s) => s.name === studentName || s.fullName === studentName);
+    
+    let overallScore = 90;
+    let attentionLevel = 'Optimal';
+    let domainsList: any[] = [];
 
-    const newResult: AssessmentResult = {
-      id: `res-${Date.now()}`,
-      studentId: 'STU-4055',
-      studentName,
-      protocolTitle: selectedProtocol.title,
-      date: new Date().toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      }),
-      overallScore,
-      statusTag: 'Screening Result',
-      domains: [
+    if (serverAssessment) {
+      overallScore = Number(serverAssessment.overallScore) || 0;
+      attentionLevel = serverAssessment.attentionLevel || 'Normal';
+
+      if (serverAssessment.domainResults && serverAssessment.domainResults.length > 0) {
+        domainsList = serverAssessment.domainResults.map((dr: any) => ({
+          name: dr.domain?.name || 'General Domain',
+          score: Number(dr.score),
+          maxScore: Number(dr.maxScore) || 100,
+          status: dr.attentionLevel === 'High' || dr.attentionLevel === 'ATTENTION_REQUIRED' ? 'CONCERN' : 'OPTIMAL',
+        }));
+      }
+    }
+
+    if (domainsList.length === 0) {
+      const values = Object.values(answers);
+      const meanVal = values.length
+        ? values.reduce((a, b) => a + b, 0) / values.length
+        : 3;
+      overallScore = Math.round((meanVal / 5) * 100);
+      domainsList = [
         {
           name: 'Emotional Regulation',
           score: Math.max(30, overallScore - 15),
@@ -251,36 +331,26 @@ export default function App() {
           maxScore: 100,
           status: 'OPTIMAL',
         },
-      ],
+      ];
+    }
+
+    const newResult: AssessmentResult = {
+      id: serverAssessment ? `res-${serverAssessment.id}` : `res-${Date.now()}`,
+      studentId: student?.studentId || 'STU-4055',
+      studentName,
+      protocolTitle: selectedProtocol.title,
+      date: new Date().toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      }),
+      overallScore,
+      statusTag: 'Screening Result',
+      domains: domainsList,
     };
 
     setAssessmentResult(newResult);
     setActiveTab('assessment_result');
-  };
-
-  const handleSaveObservationNotes = (id: string, notes: string) => {
-    setObservations((prev) =>
-      prev.map((o) => (o.id === id ? { ...o, psychologistNotes: notes } : o))
-    );
-    if (selectedObservation.id === id) {
-      setSelectedObservation((prev) => ({ ...prev, psychologistNotes: notes }));
-    }
-  };
-
-  const handleUpdateObservationStatus = (
-    id: string,
-    status: 'Reviewed' | 'Pending Review' | 'Assessed'
-  ) => {
-    setObservations((prev) =>
-      prev.map((o) => (o.id === id ? { ...o, status } : o))
-    );
-    if (selectedObservation.id === id) {
-      setSelectedObservation((prev) => ({ ...prev, status }));
-    }
-  };
-
-  const handleAddObservation = (newObs: ObservationRecord) => {
-    setObservations((prev) => [newObs, ...prev]);
   };
 
   const handleAddStudent = (newStudent: Student) => {
@@ -293,8 +363,38 @@ export default function App() {
     setActiveTab('assessment_runner');
   };
 
+  // Auth Loading Splash Screen
+  if (isAuthLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center font-sans">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-14 h-14 rounded-2xl bg-blue-700 text-white shadow-lg shadow-blue-700/20 flex items-center justify-center animate-pulse">
+            <Brain className="w-8 h-8" />
+          </div>
+          <div className="flex items-center gap-2 text-sm font-semibold text-slate-600">
+            <div className="w-2 h-2 rounded-full bg-blue-600 animate-bounce" />
+            <div className="w-2 h-2 rounded-full bg-blue-600 animate-bounce [animation-delay:0.2s]" />
+            <div className="w-2 h-2 rounded-full bg-blue-600 animate-bounce [animation-delay:0.4s]" />
+            <span>Restoring secure session...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Unauthenticated or Login view
   if (!currentUser || activeTab === 'login') {
-    return <LoginView onLogin={handleLogin} />;
+    return <LoginView />;
+  }
+
+  // ── Super Admin Layout — completely separate from tenant layout ──
+  if (currentUser.role === 'super_admin') {
+    return (
+      <>
+        <Toaster position="top-right" richColors />
+        <SuperAdminDashboard onSignOut={handleSignOut} />
+      </>
+    );
   }
 
   return (
@@ -304,7 +404,7 @@ export default function App() {
       <Sidebar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        observationCount={observations.filter((o) => o.status === 'Pending Review' || o.status === 'New').length}
+        observationCount={observationCount}
         user={currentUser}
         onSignOut={handleSignOut}
       />
@@ -316,7 +416,6 @@ export default function App() {
           setSearchQuery={setSearchQuery}
           activeTab={activeTab}
           user={currentUser}
-          onSwitchRole={handleSwitchRole}
           onSignOut={handleSignOut}
           onNavigateTab={setActiveTab}
           onOpenHelp={() =>
@@ -330,6 +429,7 @@ export default function App() {
           {activeTab === 'dashboard' && (
             <DashboardView
               students={students}
+              user={currentUser}
               onSelectStudent={handleSelectStudentFromRoster}
               onOpenNewAssessment={() => setIsNewAssessmentOpen(true)}
               setActiveTab={setActiveTab}
@@ -338,6 +438,7 @@ export default function App() {
 
           {activeTab === 'teacher_dashboard' && (
             <TeacherDashboardView
+              user={currentUser}
               onAddConcern={() => setActiveTab('teacher_add_concern')}
               setActiveTab={setActiveTab}
             />
@@ -345,28 +446,34 @@ export default function App() {
 
           {activeTab === 'observations' && (
             <ObservationsView
-              observations={observations}
+              refreshKey={observationRefreshKey}
               onSelectObservation={handleSelectObservation}
               onOpenNewNote={() => setIsNewObservationOpen(true)}
               setActiveTab={setActiveTab}
             />
           )}
 
-          {activeTab === 'observation_detail' && (
-            <ObservationDetailView
-              observation={selectedObservation}
-              onBack={() => setActiveTab('observations')}
-              onStartAssessment={handleStartAssessmentFromObs}
-              onSaveNotes={handleSaveObservationNotes}
-              onUpdateStatus={handleUpdateObservationStatus}
-              setActiveTab={setActiveTab}
-            />
-          )}
+          {activeTab === 'observation_detail' &&
+            (selectedObservationId ? (
+              <ObservationDetailView
+                observationId={selectedObservationId}
+                refreshKey={observationRefreshKey}
+                canUpdate={currentUser?.role === 'psychologist' || currentUser?.role === 'admin'}
+                onBack={() => setActiveTab('observations')}
+                onStartAssessment={handleStartAssessmentFromObs}
+                setActiveTab={setActiveTab}
+              />
+            ) : (
+              <ObservationsView
+                refreshKey={observationRefreshKey}
+                onSelectObservation={handleSelectObservation}
+                onOpenNewNote={() => setIsNewObservationOpen(true)}
+                setActiveTab={setActiveTab}
+              />
+            ))}
 
           {activeTab === 'teacher_add_concern' && (
             <TeacherAddConcernView
-              students={students}
-              onSubmitObservation={handleAddObservation}
               onCancel={() => setActiveTab('observations')}
               setActiveTab={setActiveTab}
             />
@@ -409,6 +516,7 @@ export default function App() {
           {activeTab === 'assessment_result' && (
             <AssessmentResultView
               result={assessmentResult}
+              userRole={currentUser?.role}
               onBack={() => setActiveTab('assessments')}
               setActiveTab={setActiveTab}
             />
@@ -428,6 +536,13 @@ export default function App() {
           )}
 
           {activeTab === 'student_report_preview' && (() => {
+            const defaultEmptyStudent: Student = {
+              id: '0',
+              studentId: 'STU-000',
+              name: 'Student',
+              grade: 'Grade 8',
+              school: 'EduWell',
+            };
             const targetStudent =
               students.find(
                 (s) =>
@@ -435,7 +550,8 @@ export default function App() {
                   s.name === activeAssessmentStudent
               ) ||
               selectedProfileStudent ||
-              students[0];
+              students[0] ||
+              defaultEmptyStudent;
             return (
               <StudentReportPreviewView
                 student={targetStudent}
@@ -455,18 +571,24 @@ export default function App() {
 
           {activeTab === 'parent_feedback' && (
             <ParentFeedbackView
-              students={students}
               selectedStudentName={activeAssessmentStudent || 'Alex Johnson'}
-              onSubmitFeedback={handleAddObservation}
               setActiveTab={setActiveTab}
             />
           )}
 
           {activeTab === 'psychologist_interpretation' && (() => {
+            const defaultEmptyStudent: Student = {
+              id: '0',
+              studentId: 'STU-000',
+              name: 'Student',
+              grade: 'Grade 8',
+              school: 'EduWell',
+            };
             const activeStudent =
               students.find((s) => s.name === activeAssessmentStudent) ||
               selectedProfileStudent ||
-              students[0];
+              students[0] ||
+              defaultEmptyStudent;
             return (
               <PsychologistInterpretationView
                 studentName={activeStudent.name}
@@ -493,12 +615,13 @@ export default function App() {
 
           {activeTab === 'students' && (
             <StudentsView
-              students={students}
               userRole={currentUser?.role}
               onAddStudent={handleAddStudent}
               onSelectStudent={handleSelectStudentFromRoster}
               onOpenFullProfile={(s) => {
                 setSelectedProfileStudent(s);
+                setSelectedProfileStudentId(s.id);
+                window.location.hash = `#student_profile?id=${s.id}`;
                 setActiveTab('student_profile');
               }}
               setActiveTab={setActiveTab}
@@ -508,18 +631,19 @@ export default function App() {
           {activeTab === 'student_profile' && (
             <StudentProfileView
               student={selectedProfileStudent}
-              observations={observations}
+              studentId={selectedProfileStudentId || selectedProfileStudent?.id}
+              refreshKey={observationRefreshKey}
               onOpenNewAssessment={(studentName) => {
                 setSelectedProtocol(protocols[0]);
                 setActiveAssessmentStudent(
-                  studentName || selectedProfileStudent?.name || initialStudents[0].name
+                  studentName || selectedProfileStudent?.fullName || selectedProfileStudent?.name || 'Alex Morgan'
                 );
                 setActiveTab('assessment_setup');
               }}
               onGenerateReport={(studentName) => {
                 const target =
-                  students.find((s) => s.name === studentName) || selectedProfileStudent;
-                setActiveAssessmentStudent(target.name);
+                  students.find((s) => s.fullName === studentName || s.name === studentName) || selectedProfileStudent;
+                setActiveAssessmentStudent(target.fullName || target.name || studentName);
                 setPsychologistReportData({});
                 setActiveTab('student_report_preview');
               }}
@@ -529,16 +653,15 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'settings' && <SettingsView setActiveTab={setActiveTab} />}
+          {activeTab === 'settings' && <SettingsView />}
         </main>
       </div>
 
       {/* Global Modals */}
       {isNewObservationOpen && (
         <NewObservationModal
-          students={students}
           onClose={() => setIsNewObservationOpen(false)}
-          onSubmit={handleAddObservation}
+          onSubmitted={handleObservationRefresh}
         />
       )}
 
@@ -551,5 +674,13 @@ export default function App() {
         />
       )}
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <MainApplication />
+    </AuthProvider>
   );
 }

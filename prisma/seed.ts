@@ -6,6 +6,7 @@
 import "dotenv/config";
 import { PrismaClient, Prisma } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+import bcrypt from "bcryptjs";
 
 const adapter = new PrismaPg({ connectionString: process.env["DATABASE_URL"]! });
 const prisma = new PrismaClient({ adapter });
@@ -24,6 +25,27 @@ async function main() {
     },
   });
   console.log(`  ✅ 1. School: [${school.id}] ${school.name} (${school.code})`);
+
+  // ── 1.5 School Settings (one-to-one general preferences) ───
+  const schoolSettings = await prisma.schoolSettings.upsert({
+    where: { schoolId: school.id },
+    update: {
+      defaultGradingSystem: "Standard Letter (A-F)",
+      anonymizeExports: false,
+      require2FA: false,
+      timezone: "UTC",
+      locale: "en-US",
+    },
+    create: {
+      schoolId: school.id,
+      defaultGradingSystem: "Standard Letter (A-F)",
+      anonymizeExports: false,
+      require2FA: false,
+      timezone: "UTC",
+      locale: "en-US",
+    },
+  });
+  console.log(`  ✅ 1.5 School Settings: grading=${schoolSettings.defaultGradingSystem}, tz=${schoolSettings.timezone}`);
 
   // ── 2. School API Configuration ────────────────────────────
   const existingConfig = await prisma.schoolApiConfig.findFirst({
@@ -156,14 +178,17 @@ async function main() {
   console.log(`  ✅ 4. Classes & Sections: Grade 8 (8A, 8B), Grade 4 (4A)`);
 
   // ── 5. Users (Staff / Roles) ───────────────────────────────
+  // Generate a valid bcrypt hash for "password123" with 10 salt rounds
+  const defaultPasswordHash = bcrypt.hashSync("password123", 10);
+
   const adminUser = await prisma.user.upsert({
     where: { email: "admin@westside.edu" },
-    update: { name: "Dr. Sarah Chen", role: "ADMIN", status: "ACTIVE" },
+    update: { name: "Dr. Sarah Chen", role: "ADMIN", status: "ACTIVE", passwordHash: defaultPasswordHash },
     create: {
       schoolId: school.id,
       name: "Dr. Sarah Chen",
       email: "admin@westside.edu",
-      passwordHash: "$2b$10$e8wU/syntheticHashForAdminUser123456",
+      passwordHash: defaultPasswordHash,
       role: "ADMIN",
       status: "ACTIVE",
     },
@@ -171,12 +196,12 @@ async function main() {
 
   const psychUser = await prisma.user.upsert({
     where: { email: "psych@westside.edu" },
-    update: { name: "Dr. James Okafor", role: "PSYCHOLOGIST", status: "ACTIVE" },
+    update: { name: "Dr. James Okafor", role: "PSYCHOLOGIST", status: "ACTIVE", passwordHash: defaultPasswordHash },
     create: {
       schoolId: school.id,
       name: "Dr. James Okafor",
       email: "psych@westside.edu",
-      passwordHash: "$2b$10$e8wU/syntheticHashForPsychUser123456",
+      passwordHash: defaultPasswordHash,
       role: "PSYCHOLOGIST",
       status: "ACTIVE",
     },
@@ -184,17 +209,100 @@ async function main() {
 
   const teacherUser = await prisma.user.upsert({
     where: { email: "teacher@westside.edu" },
-    update: { name: "Ms. Laura Bennett", role: "TEACHER", status: "ACTIVE" },
+    update: { name: "Ms. Laura Bennett", role: "TEACHER", status: "ACTIVE", passwordHash: defaultPasswordHash },
     create: {
       schoolId: school.id,
       name: "Ms. Laura Bennett",
       email: "teacher@westside.edu",
-      passwordHash: "$2b$10$e8wU/syntheticHashForTeacherUser123456",
+      passwordHash: defaultPasswordHash,
       role: "TEACHER",
       status: "ACTIVE",
     },
   });
-  console.log(`  ✅ 5. Users: Admin (${adminUser.name}), Psych (${psychUser.name}), Teacher (${teacherUser.name})`);
+
+  // Demo accounts aligned with frontend UI presets
+  await prisma.user.upsert({
+    where: { email: "dr.jenkins@eduwell.org" },
+    update: { name: "Dr. Sarah Jenkins", role: "PSYCHOLOGIST", status: "ACTIVE", passwordHash: defaultPasswordHash },
+    create: {
+      schoolId: school.id,
+      name: "Dr. Sarah Jenkins",
+      email: "dr.jenkins@eduwell.org",
+      passwordHash: defaultPasswordHash,
+      role: "PSYCHOLOGIST",
+      status: "ACTIVE",
+    },
+  });
+
+  await prisma.user.upsert({
+    where: { email: "sarah.teacher@eduwell.org" },
+    update: { name: "Sarah Jenkins (Educator)", role: "TEACHER", status: "ACTIVE", passwordHash: defaultPasswordHash },
+    create: {
+      schoolId: school.id,
+      name: "Sarah Jenkins (Educator)",
+      email: "sarah.teacher@eduwell.org",
+      passwordHash: defaultPasswordHash,
+      role: "TEACHER",
+      status: "ACTIVE",
+    },
+  });
+
+  await prisma.user.upsert({
+    where: { email: "principal@eduwell.org" },
+    update: { name: "Principal Robert Mercer", role: "ADMIN", status: "ACTIVE", passwordHash: defaultPasswordHash },
+    create: {
+      schoolId: school.id,
+      name: "Principal Robert Mercer",
+      email: "principal@eduwell.org",
+      passwordHash: defaultPasswordHash,
+      role: "ADMIN",
+      status: "ACTIVE",
+    },
+  });
+
+  // Optional Development Google SSO user — created ONLY when DEV_GOOGLE_TEST_EMAIL is configured.
+  // Keep personal emails out of this repository; set the variable locally in .env instead.
+  const devGoogleEmail = process.env.DEV_GOOGLE_TEST_EMAIL?.trim().toLowerCase();
+  if (devGoogleEmail) {
+    await prisma.user.upsert({
+      where: { email: devGoogleEmail },
+      update: { name: "Google SSO Test User", role: "PSYCHOLOGIST", status: "ACTIVE", passwordHash: defaultPasswordHash },
+      create: {
+        schoolId: school.id,
+        name: "Google SSO Test User",
+        email: devGoogleEmail,
+        passwordHash: defaultPasswordHash,
+        role: "PSYCHOLOGIST",
+        status: "ACTIVE",
+      },
+    });
+  }
+
+  // If a legacy parent user exists from previous seeds, clean it up
+  await prisma.user.deleteMany({
+    where: { email: "parent.johnson@eduwell.org" },
+  });
+
+  console.log(`  ✅ 5. Users: Admin, Psych, Teacher & Demo Staff Accounts (Password: password123)`);
+
+  // ── 5.5 Teacher Class & Section Access ─────────────────────
+  const teacherJenkins = await prisma.user.findUnique({ where: { email: "sarah.teacher@eduwell.org" } });
+  if (teacherJenkins) {
+    // Specific section access: Section 8B only
+    await prisma.teacherSectionAccess.upsert({
+      where: { userId_sectionId: { userId: teacherJenkins.id, sectionId: section8B.id } },
+      update: {},
+      create: { userId: teacherJenkins.id, sectionId: section8B.id },
+    });
+
+    // Whole class access: Grade 4 (all sections)
+    await prisma.teacherClassAccess.upsert({
+      where: { userId_classId: { userId: teacherJenkins.id, classId: class4.id } },
+      update: {},
+      create: { userId: teacherJenkins.id, classId: class4.id },
+    });
+  }
+  console.log(`  ✅ 5.5 Teacher Access assigned to Sarah Jenkins (Grade 4 all sections, Section 8B)`);
 
   // ── 6. Students (3 Synthetic Records) ──────────────────────
   const student1 = await prisma.student.upsert({
@@ -343,6 +451,13 @@ async function main() {
         category: "Behavioral",
         observation: "Student demonstrated frustration and verbal outburst during timed math quiz.",
         additionalComments: "Calmed down after 5 minutes in quiet corner.",
+        recordNumber: "OBS-1001",
+        setting: "Classroom / Math Lab",
+        incidentTime: "Period 3 (10:40 AM)",
+        triggers: "Timed quizzes and sudden transitions between tasks",
+        interventions: "Offered quiet-corner break, verbal reassurance, preferential seating",
+        submitterName: teacherUser.name,
+        psychologistNotes: "Awaiting formal assessment. Monitor frequency of outbursts during timed tasks.",
         status: "REVIEWED",
         observedAt: new Date("2024-10-18"),
       },
@@ -707,7 +822,23 @@ async function main() {
   }
   console.log(`  ✅ 11. Report & Immutable Snapshot created`);
 
-  console.log("\n🎉 Seed complete! All 20 tables successfully seeded with connected relational data.");
+  // ── 12. Super Admin User (platform-level, no school) ──────────
+  const superAdminPassword = await bcrypt.hash("SuperAdmin@2024!", 10);
+  await prisma.user.upsert({
+    where: { email: "superadmin@eduwell.platform" },
+    update: {},
+    create: {
+      name: "Platform Administrator",
+      email: "superadmin@eduwell.platform",
+      passwordHash: superAdminPassword,
+      role: "SUPER_ADMIN",
+      schoolId: null, // Required: SUPER_ADMIN must have null schoolId (DB CHECK constraint)
+      status: "ACTIVE",
+    },
+  });
+  console.log(`  ✅ 12. Super Admin user seeded (email: superadmin@eduwell.platform)`);
+
+  console.log("\n🎉 Seed complete! All tables successfully seeded with connected relational data.");
 }
 
 main()
@@ -718,3 +849,4 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
+

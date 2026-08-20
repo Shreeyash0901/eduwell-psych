@@ -18,12 +18,22 @@ datasource db {
 // ============================================================
 
 model School {
-  id        Int      @id @default(autoincrement())
-  name      String   @db.VarChar(255)
-  code      String   @unique @db.VarChar(50)
-  status    String   @default("ACTIVE") @db.VarChar(20) // ACTIVE, INACTIVE
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
-  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
+  id           Int      @id @default(autoincrement())
+  name         String   @db.VarChar(255)
+  code         String   @unique @db.VarChar(50)
+  status       String   @default("ACTIVE") @db.VarChar(20) // ACTIVE, INACTIVE
+  // School profile (Phase 2)
+  addressLine1 String?  @map("address_line1") @db.VarChar(255)
+  addressLine2 String?  @map("address_line2") @db.VarChar(255)
+  city         String?  @db.VarChar(100)
+  state        String?  @db.VarChar(100)
+  postalCode   String?  @map("postal_code") @db.VarChar(20)
+  country      String?  @db.VarChar(100)
+  phone        String?  @db.VarChar(50)
+  website      String?  @db.VarChar(255)
+  logoUrl      String?  @map("logo_url") @db.VarChar(500)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
 
   apiConfigs          SchoolApiConfig[]
   users               User[]
@@ -35,8 +45,32 @@ model School {
   assessmentTemplates AssessmentTemplate[]
   studentAssessments  StudentAssessment[]
   reports             Report[]
+  schoolApiAuditLogs  SchoolApiAuditLog[]
+  notifications       Notification[]
+  schoolSettings      SchoolSettings?
+  systemAuditLogs     SystemAuditLog[]
 
   @@map("schools")
+}
+
+// ============================================================
+// 1.5 school_settings — One-to-One General School Preferences
+// ============================================================
+
+model SchoolSettings {
+  id                   Int      @id @default(autoincrement())
+  schoolId             Int      @unique @map("school_id")
+  defaultGradingSystem String?  @map("default_grading_system") @db.VarChar(50) // Values undefined by spec; nullable until validated
+  anonymizeExports     Boolean  @default(false) @map("anonymize_exports") // Conservative: exports NOT anonymized unless enabled
+  require2FA           Boolean  @default(false) @map("require_2fa") // 2FA enforcement not implemented yet
+  timezone             String   @default("UTC") @db.VarChar(50) // IANA timezone name (e.g. UTC, America/New_York)
+  locale               String   @default("en-US") @db.VarChar(10) // BCP-47 locale tag
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@map("school_settings")
 }
 
 // ============================================================
@@ -68,22 +102,30 @@ model SchoolApiConfig {
 
 model User {
   id           Int      @id @default(autoincrement())
-  schoolId     Int      @map("school_id")
+  // schoolId is nullable: SUPER_ADMIN has null, all other roles must have a school.
+  // Enforced by a PostgreSQL CHECK constraint in the migration.
+  schoolId     Int?     @map("school_id")
   name         String   @db.VarChar(100)
   email        String   @unique @db.VarChar(255)
   passwordHash String   @map("password_hash") @db.VarChar(255)
-  role         String   @default("TEACHER") @db.VarChar(30) // ADMIN, PSYCHOLOGIST, TEACHER
+  role         String   @default("TEACHER") @db.VarChar(30) // ADMIN, PSYCHOLOGIST, TEACHER, SUPER_ADMIN
+  googleId     String?  @unique @map("google_id") @db.VarChar(255)
   status       String   @default("ACTIVE") @db.VarChar(20)
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
 
-  school                School               @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  uploadedImports       StudentImport[]      @relation("ImportUploadedBy")
-  observationsSubmitted StudentObservation[] @relation("ObservationSubmittedBy")
-  createdTemplates      AssessmentTemplate[] @relation("TemplateCreatedBy")
-  createdAssessments    StudentAssessment[]  @relation("AssessmentCreatedBy")
-  reviewedAssessments   StudentAssessment[]  @relation("AssessmentReviewedBy")
-  generatedReports      Report[]             @relation("ReportGeneratedBy")
+  school                 School?                @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  uploadedImports        StudentImport[]        @relation("ImportUploadedBy")
+  observationsSubmitted  StudentObservation[]   @relation("ObservationSubmittedBy")
+  createdTemplates       AssessmentTemplate[]   @relation("TemplateCreatedBy")
+  createdAssessments     StudentAssessment[]    @relation("AssessmentCreatedBy")
+  reviewedAssessments    StudentAssessment[]    @relation("AssessmentReviewedBy")
+  generatedReports       Report[]               @relation("ReportGeneratedBy")
+  teacherClassAccesses   TeacherClassAccess[]
+  teacherSectionAccesses TeacherSectionAccess[]
+  schoolApiAuditLogs     SchoolApiAuditLog[]
+  notifications          Notification[]
+  systemAuditLogs        SystemAuditLog[]
 
   @@index([schoolId])
   @@map("users")
@@ -125,10 +167,11 @@ model Class {
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
 
-  school   School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  sections Section[]
-  students Student[]
-  reports  Report[]
+  school               School               @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  sections             Section[]
+  students             Student[]
+  reports              Report[]
+  teacherClassAccesses TeacherClassAccess[]
 
   @@index([schoolId])
   @@map("classes")
@@ -147,9 +190,10 @@ model Section {
   createdAt         DateTime @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
 
-  class    Class     @relation(fields: [classId], references: [id], onDelete: Cascade)
-  students Student[]
-  reports  Report[]
+  class                  Class                  @relation(fields: [classId], references: [id], onDelete: Cascade)
+  students               Student[]
+  reports                Report[]
+  teacherSectionAccesses TeacherSectionAccess[]
 
   @@index([classId])
   @@map("sections")
@@ -255,10 +299,18 @@ model StudentObservation {
   schoolId           Int      @map("school_id")
   studentId          Int      @map("student_id")
   submittedBy        Int      @map("submitted_by")
-  source             String   @db.VarChar(30) // TEACHER, PARENT, PSYCHOLOGIST
+  source             String   @db.VarChar(30) // TEACHER, PARENT, COUNSELOR, PSYCHOLOGIST
   category           String   @db.VarChar(100)
   observation        String   @db.Text
   additionalComments String?  @map("additional_comments") @db.Text
+  recordNumber       String?  @map("record_number") @db.VarChar(50)
+  setting            String?  @db.VarChar(100)
+  incidentTime       String?  @map("incident_time") @db.VarChar(50)
+  triggers           String?  @db.Text
+  interventions      String?  @db.Text
+  submitterName      String?  @map("submitter_name") @db.VarChar(100)
+  psychologistNotes  String?  @map("psychologist_notes") @db.Text
+  aiAnalysis         String?  @map("ai_analysis") @db.Text
   status             String   @default("PENDING") @db.VarChar(30)
   observedAt         DateTime @map("observed_at") @db.Date
   createdAt          DateTime @default(now()) @map("created_at") @db.Timestamp(6)
@@ -268,6 +320,7 @@ model StudentObservation {
   student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
   submitter User    @relation("ObservationSubmittedBy", fields: [submittedBy], references: [id], onDelete: Restrict)
 
+  @@unique([schoolId, recordNumber])
   @@index([schoolId])
   @@index([studentId])
   @@index([submittedBy])
@@ -528,4 +581,136 @@ model ReportSnapshot {
 
   @@index([reportId])
   @@map("report_snapshots")
+}
+
+// ============================================================
+// 21. teacher_class_access — Teacher Class Permissions
+// ============================================================
+
+model TeacherClassAccess {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  classId   Int      @map("class_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  class Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, classId])
+  @@index([userId])
+  @@index([classId])
+  @@map("teacher_class_access")
+}
+
+// ============================================================
+// 22. teacher_section_access — Teacher Section Permissions
+// ============================================================
+
+model TeacherSectionAccess {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  sectionId Int      @map("section_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  section Section @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, sectionId])
+  @@index([userId])
+  @@index([sectionId])
+  @@map("teacher_section_access")
+}
+
+// ============================================================
+// 23. school_api_audit_logs — School API Sync & Test Audit Trail
+// ============================================================
+
+model SchoolApiAuditLog {
+  id               Int      @id @default(autoincrement())
+  schoolId         Int      @map("school_id")
+  action           String   @db.VarChar(50) // CONNECTION_TEST, STUDENT_SYNC
+  status           String   @db.VarChar(20) // SUCCESS, FAILED
+  actorId          Int      @map("actor_id")
+  targetIdentifier String?  @map("target_identifier") @db.VarChar(100)
+  errorMessage     String?  @map("error_message") @db.Text
+  metadata         Json?    @db.JsonB
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  actor  User   @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([schoolId])
+  @@index([actorId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("school_api_audit_logs")
+}
+
+// ============================================================
+// 24. notifications — In-App Notifications
+// ============================================================
+
+enum NotificationType {
+  URGENT
+  ASSESSMENT
+  FEEDBACK
+  SYSTEM
+}
+
+enum NotificationPriority {
+  LOW
+  NORMAL
+  HIGH
+}
+
+model Notification {
+  id         Int                  @id @default(autoincrement())
+  schoolId   Int                  @map("school_id")
+  userId     Int                  @map("user_id")
+  type       NotificationType
+  priority   NotificationPriority @default(NORMAL)
+  title      String               @db.VarChar(255)
+  message    String               @db.Text
+  entityType String?              @map("entity_type") @db.VarChar(50)
+  entityId   Int?                 @map("entity_id")
+  isRead     Boolean              @default(false) @map("is_read")
+  readAt     DateTime?            @map("read_at") @db.Timestamp(6)
+  dedupeKey  String?              @map("dedupe_key") @db.VarChar(255)
+  createdAt  DateTime             @default(now()) @map("created_at") @db.Timestamp(6)
+  expiresAt  DateTime?            @map("expires_at") @db.Timestamp(6)
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([schoolId, dedupeKey])
+  @@index([schoolId])
+  @@index([userId])
+  @@index([isRead])
+  @@map("notifications")
+}
+
+// ============================================================
+// 26. system_audit_logs — Platform-Level Super Admin Audit Trail
+// Never stores clinical data, passwords, tokens, or confidential content.
+// ============================================================
+
+model SystemAuditLog {
+  id             Int      @id @default(autoincrement())
+  actorUserId    Int      @map("actor_user_id")
+  action         String   @db.VarChar(100) // e.g. "school.create", "school.deactivate"
+  targetType     String?  @map("target_type") @db.VarChar(50) // e.g. "SCHOOL", "USER"
+  targetId       Int?     @map("target_id")
+  targetSchoolId Int?     @map("target_school_id")
+  metadata       Json     @default("{}") // Safe operational metadata only
+  requestId      String?  @map("request_id") @db.VarChar(100)
+  outcome        String   @default("SUCCESS") @db.VarChar(20) // SUCCESS, FAILURE
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  actor        User    @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+  targetSchool School? @relation(fields: [targetSchoolId], references: [id], onDelete: SetNull)
+
+  @@index([actorUserId])
+  @@index([targetSchoolId])
+  @@index([createdAt])
+  @@map("system_audit_logs")
 }
