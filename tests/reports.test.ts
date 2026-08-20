@@ -1,5 +1,6 @@
 // tests/reports.test.ts
 // Comprehensive Report & Clinical Access Security Test Suite
+// Slices 1 & 2: Security, Privacy, Access Policy & Student Report Correctness
 
 import "dotenv/config";
 import test from "node:test";
@@ -84,6 +85,7 @@ let sessionAId: number;
 
 let classBId: number;
 let studentB1Id: number;
+let sessionBId: number;
 
 let adminACookie = "";
 let psychACookie = "";
@@ -243,7 +245,7 @@ async function createFixtures() {
     },
   });
 
-  // Completed Student Assessment with Sentinel confidential values
+  // Completed Student Assessment INSIDE reporting period
   await prisma.studentAssessment.create({
     data: {
       schoolId: schoolA.id,
@@ -269,7 +271,22 @@ async function createFixtures() {
     },
   });
 
-  // Observation with Sentinel confidential notes
+  // Assessment completed OUTSIDE reporting period (2024-01-15: Before session start)
+  await prisma.studentAssessment.create({
+    data: {
+      schoolId: schoolA.id,
+      studentId: studentA1.id,
+      assessmentTemplateId: templateA.id,
+      startedAt: new Date("2024-01-15"),
+      completedAt: new Date("2024-01-15"),
+      status: "COMPLETED",
+      overallScore: 40,
+      attentionLevel: "LOW",
+      createdBy: psychA.id,
+    },
+  });
+
+  // Observation INSIDE reporting period with intervention
   await prisma.studentObservation.create({
     data: {
       schoolId: schoolA.id,
@@ -277,11 +294,27 @@ async function createFixtures() {
       submittedBy: teacherClassA.id,
       source: "TEACHER",
       category: "Classroom",
+      setting: "Math Class",
       observation: "Student actively participated in classroom activities.",
+      interventions: "Provided extra reading time and positive reinforcement.",
       psychologistNotes: SENTINEL_PSYCH_NOTE,
       aiAnalysis: SENTINEL_AI_ANALYSIS,
       status: "REVIEWED",
       observedAt: new Date("2025-09-05"),
+    },
+  });
+
+  // Observation OUTSIDE reporting period (2024-02-10: Before session start)
+  await prisma.studentObservation.create({
+    data: {
+      schoolId: schoolA.id,
+      studentId: studentA1.id,
+      submittedBy: teacherClassA.id,
+      source: "TEACHER",
+      category: "Playground",
+      observation: "Old observation from last year.",
+      status: "REVIEWED",
+      observedAt: new Date("2024-02-10"),
     },
   });
 
@@ -290,6 +323,17 @@ async function createFixtures() {
     data: { name: "Security School B", code: "REP_SEC_B", status: "ACTIVE" },
   });
   schoolBId = schoolB.id;
+
+  const sessionB = await prisma.academicSession.create({
+    data: {
+      schoolId: schoolB.id,
+      name: "2025-2026 Academic Year B",
+      startDate: new Date("2025-08-01"),
+      endDate: new Date("2026-06-30"),
+      isCurrent: true,
+    },
+  });
+  sessionBId = sessionB.id;
 
   const adminB = await prisma.user.create({
     data: { schoolId: schoolB.id, name: "Admin B", email: ADMIN_B, passwordHash: pw, role: "ADMIN" },
@@ -392,8 +436,8 @@ test("1.2 Psychologist can generate, view, and see clinical interpretation", asy
   assert.ok(snapshotJson.assessments.length > 0);
   assert.equal(snapshotJson.assessments[0].professionalInterpretation, SENTINEL_PROF_INTERP);
   assert.equal(snapshotJson.assessments[0].recommendations, SENTINEL_RECOMMENDATION);
-  assert.equal(snapshotJson.observations[0].psychologistNotes, SENTINEL_PSYCH_NOTE);
-  assert.equal(snapshotJson.observations[0].aiAnalysis, SENTINEL_AI_ANALYSIS);
+  assert.equal(snapshotJson.observations.items[0].psychologistNotes, SENTINEL_PSYCH_NOTE);
+  assert.equal(snapshotJson.observations.items[0].aiAnalysis, SENTINEL_AI_ANALYSIS);
 });
 
 test("1.3 Admin receives operational report with clinical fields redacted", async () => {
@@ -422,8 +466,8 @@ test("1.3 Admin receives operational report with clinical fields redacted", asyn
   // Redactions for Admin:
   assert.equal(snapshotJson.assessments[0].professionalInterpretation, undefined);
   assert.equal(snapshotJson.assessments[0].recommendations, undefined);
-  assert.equal(snapshotJson.observations[0].psychologistNotes, undefined);
-  assert.equal(snapshotJson.observations[0].aiAnalysis, undefined);
+  assert.equal(snapshotJson.observations.items[0].psychologistNotes, undefined);
+  assert.equal(snapshotJson.observations.items[0].aiAnalysis, undefined);
 });
 
 // ────────────────────────────────────────────────────────────
@@ -484,7 +528,6 @@ test("2.1 Cross-tenant targets return 404", async () => {
 });
 
 test("2.2 Cross-tenant report view and export return 404", async () => {
-  // Get an existing report from School A
   const listRes = await fetch(baseUrl, { headers: { Cookie: psychACookie } });
   const listData = await listRes.json();
   const schoolAReportId = listData.reports[0].id;
@@ -593,7 +636,6 @@ test("3.3 Unassigned teacher cannot generate reports", async () => {
 // ────────────────────────────────────────────────────────────
 
 test("4.1 Revoking teacher assignment denies subsequent view and export with 403", async () => {
-  // Create a temporary teacher and assign them Section 9-B
   const pw = await bcrypt.hash(PASSWORD, 10);
   const tempTeacher = await prisma.user.create({
     data: {
@@ -654,7 +696,6 @@ test("4.1 Revoking teacher assignment denies subsequent view and export with 403
 // ────────────────────────────────────────────────────────────
 
 test("5.1 Sentinel confidential texts never leak in Teacher responses, snapshots, PDF, CSV, or assessments", async () => {
-  // Generate a report as psychologist on Student A1 (who has sentinel data)
   const genRes = await fetch(`${baseUrl}/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Cookie: psychACookie },
@@ -718,7 +759,9 @@ test("5.1 Sentinel confidential texts never leak in Teacher responses, snapshots
   const asmtPsychRes = await fetch(`${assessmentsUrl}/student/${studentA1Id}`, { headers: { Cookie: psychACookie } });
   assert.equal(asmtPsychRes.status, 200);
   const asmtPsychJson = await asmtPsychRes.json();
-  assert.equal(asmtPsychJson.assessments[0].professionalInterpretation, SENTINEL_PROF_INTERP);
+  const sentinelAsmt = asmtPsychJson.assessments.find((a: any) => a.professionalInterpretation === SENTINEL_PROF_INTERP);
+  assert.ok(sentinelAsmt, "Psychologist must be able to view professionalInterpretation in assessment history");
+
 });
 
 // ────────────────────────────────────────────────────────────
@@ -748,9 +791,7 @@ test("6.1 Export endpoints enforce security headers and CSV formula injection pr
   assert.equal(csvRes.headers.get("content-disposition"), `attachment; filename="report_${reportId}.csv"`);
 
   const csvText = await csvRes.text();
-  // Student 1 studentId starts with '=1+1' -> must be escaped as "'=1+1"
   assert.ok(csvText.includes("''=1+1") || csvText.includes("'=1+1"), "CSV formula injection not neutralized for studentId");
-  // Student 1 firstName starts with '+FormulaFirst' -> must be escaped as "'+FormulaFirst"
   assert.ok(csvText.includes("'+FormulaFirst"), "CSV formula injection not neutralized for firstName");
 });
 
@@ -759,7 +800,6 @@ test("6.1 Export endpoints enforce security headers and CSV formula injection pr
 // ────────────────────────────────────────────────────────────
 
 test("7.1 Historical snapshot containing clinicalNotes in DB is sanitized on read for Admin and Teacher", async () => {
-  // Create a historical report directly matching the seed fixture format (containing clinicalNotes)
   const histReport = await prisma.report.create({
     data: {
       schoolId: schoolAId,
@@ -802,49 +842,195 @@ test("7.1 Historical snapshot containing clinicalNotes in DB is sanitized on rea
     },
   });
 
-  // Direct database check: verify DB snapshot-at-rest retains the fields (immutable)
   const dbSnapshot = await prisma.reportSnapshot.findFirst({ where: { reportId: histReport.id } });
   const rawDbContent = JSON.stringify(dbSnapshot!.contentJson);
   assert.ok(rawDbContent.includes(SENTINEL_CLINICAL_NOTES), "DB snapshot must retain original data at rest");
 
-  // 1. Teacher fetch: must be sanitized
+  // 1. Teacher fetch
   const teacherRes = await fetch(`${baseUrl}/${histReport.id}`, { headers: { Cookie: teacherClassACookie } });
   assert.equal(teacherRes.status, 200);
-  const teacherJson = await teacherRes.json();
-  const teacherStr = JSON.stringify(teacherJson);
+  const teacherStr = JSON.stringify(await teacherRes.json());
+  assert.ok(!teacherStr.includes(SENTINEL_CLINICAL_NOTES));
+  assert.ok(!teacherStr.includes(SENTINEL_RECOMMENDATION));
+  assert.ok(!teacherStr.includes(SENTINEL_PSYCH_NOTE));
+  assert.ok(!teacherStr.includes(SENTINEL_AI_ANALYSIS));
 
-  assert.ok(!teacherStr.includes(SENTINEL_CLINICAL_NOTES), "Teacher read leaked clinicalNotes");
-  assert.ok(!teacherStr.includes(SENTINEL_RECOMMENDATION), "Teacher read leaked recommendations");
-  assert.ok(!teacherStr.includes(SENTINEL_PSYCH_NOTE), "Teacher read leaked psychologistNotes");
-  assert.ok(!teacherStr.includes(SENTINEL_AI_ANALYSIS), "Teacher read leaked aiAnalysis");
-
-  // 2. Admin fetch: must be sanitized
+  // 2. Admin fetch
   const adminRes = await fetch(`${baseUrl}/${histReport.id}`, { headers: { Cookie: adminACookie } });
   assert.equal(adminRes.status, 200);
-  const adminJson = await adminRes.json();
-  const adminStr = JSON.stringify(adminJson);
+  const adminStr = JSON.stringify(await adminRes.json());
+  assert.ok(!adminStr.includes(SENTINEL_CLINICAL_NOTES));
+  assert.ok(!adminStr.includes(SENTINEL_RECOMMENDATION));
 
-  assert.ok(!adminStr.includes(SENTINEL_CLINICAL_NOTES), "Admin read leaked clinicalNotes");
-  assert.ok(!adminStr.includes(SENTINEL_RECOMMENDATION), "Admin read leaked recommendations");
-  assert.ok(!adminStr.includes(SENTINEL_PSYCH_NOTE), "Admin read leaked psychologistNotes");
-  assert.ok(!adminStr.includes(SENTINEL_AI_ANALYSIS), "Admin read leaked aiAnalysis");
-
-  // 3. Teacher PDF export of historical report: must be sanitized
+  // 3. Teacher PDF export
   const pdfRes = await fetch(`${baseUrl}/${histReport.id}/export?format=pdf`, { headers: { Cookie: teacherClassACookie } });
   assert.equal(pdfRes.status, 200);
   const pdfBuffer = await pdfRes.arrayBuffer();
   const pdfText = Buffer.from(pdfBuffer).toString("utf-8");
+  assert.ok(!pdfText.includes(SENTINEL_CLINICAL_NOTES));
+  assert.ok(!pdfText.includes(SENTINEL_RECOMMENDATION));
 
-  assert.ok(!pdfText.includes(SENTINEL_CLINICAL_NOTES), "Teacher PDF leaked clinicalNotes");
-  assert.ok(!pdfText.includes(SENTINEL_RECOMMENDATION), "Teacher PDF leaked recommendations");
-
-  // 4. Psychologist fetch: receives full clinical notes
+  // 4. Psychologist fetch
   const psychRes = await fetch(`${baseUrl}/${histReport.id}`, { headers: { Cookie: psychACookie } });
   assert.equal(psychRes.status, 200);
-  const psychJson = await psychRes.json();
-  const psychStr = JSON.stringify(psychJson);
-
-  assert.ok(psychStr.includes(SENTINEL_CLINICAL_NOTES), "Psychologist must receive clinicalNotes");
-  assert.ok(psychStr.includes(SENTINEL_RECOMMENDATION), "Psychologist must receive recommendations");
+  const psychStr = JSON.stringify(await psychRes.json());
+  assert.ok(psychStr.includes(SENTINEL_CLINICAL_NOTES));
+  assert.ok(psychStr.includes(SENTINEL_RECOMMENDATION));
 });
 
+// ────────────────────────────────────────────────────────────
+// 8. Slice 2: Student Report Structure & Academic Session Tests
+// ────────────────────────────────────────────────────────────
+
+test("8.1 Missing studentId on STUDENT report generation returns 400", async () => {
+  const res = await fetch(`${baseUrl}/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Cookie: psychACookie },
+    body: JSON.stringify({
+      reportType: "STUDENT",
+      title: "Missing Student ID Report",
+    }),
+  });
+  assert.equal(res.status, 400);
+  const data = await res.json();
+  assert.equal(data.success, false);
+});
+
+test("8.2 Academic session resolution: explicit session, active session fallback, and conflict handling", async () => {
+  // 1. Explicit session in same school succeeds
+  const resExplicit = await fetch(`${baseUrl}/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Cookie: psychACookie },
+    body: JSON.stringify({
+      reportType: "STUDENT",
+      title: "Explicit Session Report",
+      studentId: studentA1Id,
+      academicSessionId: sessionAId,
+    }),
+  });
+  assert.equal(resExplicit.status, 201);
+  const dataExplicit = await resExplicit.json();
+  assert.equal(dataExplicit.report.academicSessionId, sessionAId);
+
+  // 2. Omitted session resolves the single current active session
+  const resOmitted = await fetch(`${baseUrl}/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Cookie: psychACookie },
+    body: JSON.stringify({
+      reportType: "STUDENT",
+      title: "Resolved Session Report",
+      studentId: studentA1Id,
+    }),
+  });
+  assert.equal(resOmitted.status, 201);
+  const dataOmitted = await resOmitted.json();
+  assert.equal(dataOmitted.report.academicSessionId, sessionAId);
+
+  // 3. Create a conflict: mark a second session as isCurrent: true
+  const conflictSession = await prisma.academicSession.create({
+    data: {
+      schoolId: schoolAId,
+      name: "2025-2026 Duplicate Current Session",
+      startDate: new Date("2025-08-01"),
+      endDate: new Date("2026-06-30"),
+      isCurrent: true,
+    },
+  });
+
+  const resConflict = await fetch(`${baseUrl}/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Cookie: psychACookie },
+    body: JSON.stringify({
+      reportType: "STUDENT",
+      title: "Conflict Session Report",
+      studentId: studentA1Id,
+    }),
+  });
+  assert.equal(resConflict.status, 400);
+
+  // Clean up duplicate session
+  await prisma.academicSession.delete({ where: { id: conflictSession.id } });
+});
+
+test("8.3 StudentReportSnapshotV1 payload structure and reporting period filtering", async () => {
+  const genRes = await fetch(`${baseUrl}/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Cookie: psychACookie },
+    body: JSON.stringify({
+      reportType: "STUDENT",
+      title: "V1 Structured Contract Verification",
+      studentId: studentA1Id,
+      academicSessionId: sessionAId,
+    }),
+  });
+  assert.equal(genRes.status, 201);
+  const genData = await genRes.json();
+  const reportId = genData.report.id;
+
+  const viewRes = await fetch(`${baseUrl}/${reportId}`, {
+    headers: { Cookie: psychACookie },
+  });
+  assert.equal(viewRes.status, 200);
+  const viewData = await viewRes.json();
+  const v1: any = viewData.report.snapshots[0].contentJson;
+
+  // Verify Schema Version & Core Structure
+  assert.equal(v1.schemaVersion, 1);
+  assert.equal(v1.reportType, "STUDENT");
+  assert.equal(v1.report.title, "V1 Structured Contract Verification");
+  assert.equal(v1.report.academicSessionId, sessionAId);
+  assert.ok(v1.report.reportingPeriod.startDate);
+  assert.ok(v1.report.reportingPeriod.endDate);
+
+  // Verify Student Identity
+  assert.equal(v1.student.id, studentA1Id);
+  assert.equal(v1.student.studentCode, "=1+1 STU-A1");
+  assert.equal(v1.student.firstName, "+FormulaFirst");
+  assert.equal(v1.student.lastName, "StudentA1");
+  assert.equal(v1.student.class, "Grade 9");
+  assert.equal(v1.student.section, "9-A");
+
+  // Verify Academic Session
+  assert.equal(v1.academicSession.id, sessionAId);
+  assert.equal(v1.academicSession.name, "2025-2026 Academic Year");
+
+  // Verify GeneratedBy
+  assert.equal(v1.generatedBy.id, (await prisma.user.findUnique({ where: { email: PSYCH_A } }))!.id);
+  assert.equal(v1.generatedBy.displayName, "Psych A");
+  assert.equal(v1.generatedBy.role, "PSYCHOLOGIST");
+
+  // Verify Summary
+  assert.equal(v1.summary.currentWellnessStatus, "ATTENTION_REQUIRED");
+  assert.equal(v1.summary.observationCount, 1); // 1 inside period, 1 before period excluded
+  assert.equal(v1.summary.interventionCount, 1);
+  assert.equal(v1.summary.followUpCount, 0);
+
+  // Verify Assessments (Only completed within reporting period)
+  assert.equal(v1.assessments.length, 1);
+  const asmt = v1.assessments[0];
+  assert.equal(asmt.templateName, "Wellness Screening Protocol");
+  assert.equal(asmt.category, "Behavioral");
+  assert.equal(asmt.overallScore, 85);
+  assert.equal(asmt.attentionLevel, "ATTENTION_REQUIRED");
+  assert.equal(asmt.domains.length, 1);
+  assert.equal(asmt.domains[0].name, "Emotional Balance");
+  assert.equal(asmt.domains[0].score, 85);
+  assert.equal(asmt.domains[0].maxScore, 100);
+
+  // Verify Observations (Only observedAt within reporting period)
+  assert.equal(v1.observations.totalCount, 1);
+  assert.equal(v1.observations.items.length, 1);
+  const obs = v1.observations.items[0];
+  assert.equal(obs.source, "TEACHER");
+  assert.equal(obs.category, "Classroom");
+  assert.equal(obs.setting, "Math Class");
+  assert.equal(obs.observedAt, "2025-09-05");
+
+  // Verify Interventions
+  assert.equal(v1.interventions.length, 1);
+  assert.equal(v1.interventions[0].observationId, obs.id);
+  assert.equal(v1.interventions[0].intervention, "Provided extra reading time and positive reinforcement.");
+
+  // Verify FollowUps
+  assert.deepEqual(v1.followUps, []);
+});

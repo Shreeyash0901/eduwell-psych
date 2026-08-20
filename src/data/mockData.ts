@@ -380,8 +380,8 @@ export const demoUsers: UserSession[] = [
     id: 'u-admin',
     name: 'Principal Robert Mercer',
     email: 'admin@eduwell.org',
-    role: 'admin',
-    roleTitle: 'District Administrator & Principal',
+    role: 'ADMIN',
+    roleTitle: 'Admin',
     avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=120',
     schoolName: 'Lincoln Unified District #42'
   }

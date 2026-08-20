@@ -46,6 +46,8 @@ export interface ValidatedTargetScope {
     lastName: string | null;
     classId: number | null;
     sectionId: number | null;
+    class?: { name: string } | null;
+    section?: { name: string } | null;
   };
   class?: {
     id: number;
@@ -59,6 +61,8 @@ export interface ValidatedTargetScope {
   academicSession?: {
     id: number;
     name: string;
+    startDate: Date;
+    endDate: Date;
   };
 }
 
@@ -143,6 +147,10 @@ export async function authorizeReportTarget(
   }
 
   // 1. Student validation
+  if (target.reportType === "STUDENT" && (target.studentId === undefined || target.studentId === null)) {
+    throw new ReportAccessError(400, "studentId is required for student reports.");
+  }
+
   if (target.studentId !== undefined && target.studentId !== null) {
     const student = await prisma.student.findFirst({
       where: {
@@ -156,6 +164,8 @@ export async function authorizeReportTarget(
         lastName: true,
         classId: true,
         sectionId: true,
+        class: { select: { name: true } },
+        section: { select: { name: true } },
       },
     });
 
@@ -243,7 +253,7 @@ export async function authorizeReportTarget(
     result.section = section;
   }
 
-  // 4. Academic Session validation
+  // 4. Academic Session resolution
   if (target.academicSessionId !== undefined && target.academicSessionId !== null) {
     const session = await prisma.academicSession.findFirst({
       where: {
@@ -253,6 +263,8 @@ export async function authorizeReportTarget(
       select: {
         id: true,
         name: true,
+        startDate: true,
+        endDate: true,
       },
     });
 
@@ -261,6 +273,33 @@ export async function authorizeReportTarget(
     }
 
     result.academicSession = session;
+  } else {
+    // Resolve school's current/active session
+    const currentSessions = await prisma.academicSession.findMany({
+      where: {
+        schoolId: actor.schoolId,
+        isCurrent: true,
+      },
+      select: {
+        id: true,
+        name: true,
+        startDate: true,
+        endDate: true,
+      },
+    });
+
+    if (currentSessions.length === 0) {
+      throw new ReportAccessError(400, "No active academic session found for this school.");
+    }
+
+    if (currentSessions.length > 1) {
+      throw new ReportAccessError(
+        400,
+        "Multiple active academic sessions configured for this school. Please specify an academicSessionId."
+      );
+    }
+
+    result.academicSession = currentSessions[0];
   }
 
   return result;

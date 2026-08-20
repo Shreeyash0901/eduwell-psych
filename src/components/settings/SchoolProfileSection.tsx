@@ -193,7 +193,7 @@ export const SchoolProfileSection: React.FC = () => {
       >
         {!isAdmin && (
           <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 font-medium">
-            Read-only view. Only district administrators can modify school profile settings.
+            Read-only view. Only admins can modify school profile settings.
           </div>
         )}
 

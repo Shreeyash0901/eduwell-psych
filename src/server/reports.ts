@@ -116,6 +116,11 @@ reportsRouter.post("/generate", async (req: AuthenticatedRequest, res: Response)
       academicSessionId: parsedSessionId,
     });
 
+    const resolvedSessionId =
+      (reportData as any).academicSession?.id ??
+      (reportData as any).academicSessionId ??
+      parsedSessionId;
+
     // Create Report Header
     const report = await prisma.report.create({
       data: {
@@ -125,7 +130,7 @@ reportsRouter.post("/generate", async (req: AuthenticatedRequest, res: Response)
         studentId: parsedStudentId,
         classId: parsedClassId,
         sectionId: parsedSectionId,
-        academicSessionId: parsedSessionId,
+        academicSessionId: resolvedSessionId,
         generatedBy: actor.id,
         status: "COMPLETED",
       },
@@ -133,6 +138,10 @@ reportsRouter.post("/generate", async (req: AuthenticatedRequest, res: Response)
         generator: { select: { name: true, role: true } },
       },
     });
+
+    if ((reportData as any).schemaVersion === 1 && (reportData as any).report) {
+      (reportData as any).report.reportId = report.id;
+    }
 
     // Create Immutable JSON Snapshot
     await prisma.reportSnapshot.create({
@@ -142,7 +151,7 @@ reportsRouter.post("/generate", async (req: AuthenticatedRequest, res: Response)
       },
     });
 
-    return res.status(201).json({ success: true, report });
+    return res.status(201).json({ success: true, report, snapshot: reportData });
   } catch (error: any) {
     if (error instanceof ReportAccessError) {
       return res.status(error.statusCode).json({ success: false, error: error.message });

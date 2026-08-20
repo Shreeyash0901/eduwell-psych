@@ -26,7 +26,7 @@ export function getRoleTitle(role: string): string {
     case 'parent':
       return 'Parent / Guardian';
     case 'admin':
-      return 'District Administrator & Principal';
+      return 'Admin';
     default:
       return 'School Staff';
   }
