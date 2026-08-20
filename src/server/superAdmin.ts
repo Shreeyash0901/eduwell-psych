@@ -61,27 +61,109 @@ const SAFE_SCHOOL_FIELDS = {
 // ── GET /api/super-admin/metrics ─────────────────────────────────
 superAdminRouter.get("/metrics", async (_req: Request, res: Response) => {
   try {
-    const [totalSchools, activeSchools, inactiveSchools, totalActiveStudents, staffCounts, syncMetrics] =
-      await Promise.all([
-        prisma.school.count(),
-        prisma.school.count({ where: { status: "ACTIVE" } }),
-        prisma.school.count({ where: { status: "INACTIVE" } }),
-        prisma.student.count({ where: { isActive: true } }),
-        prisma.user.groupBy({
-          by: ["role"],
-          where: { status: "ACTIVE", role: { not: "SUPER_ADMIN" } },
-          _count: { id: true },
-        }),
-        prisma.schoolApiConfig.aggregate({
-          _count: { id: true },
-          where: { isEnabled: true },
-        }),
-      ]);
+    const [
+      totalSchools,
+      activeSchools,
+      inactiveSchools,
+      totalActiveStudents,
+      staffCounts,
+      syncConfigs,
+      totalObservations,
+      totalAssessments,
+      totalReports,
+      totalClasses,
+      recentLogs,
+    ] = await Promise.all([
+      prisma.school.count(),
+      prisma.school.count({ where: { status: "ACTIVE" } }),
+      prisma.school.count({ where: { status: "INACTIVE" } }),
+      prisma.student.count({ where: { isActive: true } }),
+      prisma.user.groupBy({
+        by: ["role"],
+        where: { status: "ACTIVE", role: { not: "SUPER_ADMIN" } },
+        _count: { id: true },
+      }),
+      prisma.schoolApiConfig.findMany({
+        select: {
+          id: true,
+          schoolId: true,
+          isEnabled: true,
+          lastTestedAt: true,
+          lastSyncAt: true,
+          baseUrl: true,
+          school: { select: { id: true, name: true, code: true } },
+        },
+      }),
+      prisma.studentObservation.count(),
+      prisma.studentAssessment.count(),
+      prisma.report.count(),
+      prisma.class.count(),
+      prisma.systemAuditLog.findMany({
+        take: 8,
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          action: true,
+          targetType: true,
+          targetId: true,
+          targetSchoolId: true,
+          outcome: true,
+          createdAt: true,
+          actor: { select: { id: true, name: true, email: true, role: true } },
+          targetSchool: { select: { id: true, name: true, code: true } },
+        },
+      }),
+    ]);
 
-    const staffByRole: Record<string, number> = {};
+    const staffByRole: Record<string, number> = {
+      ADMIN: 0,
+      PSYCHOLOGIST: 0,
+      TEACHER: 0,
+    };
     for (const group of staffCounts) {
       staffByRole[group.role] = group._count.id;
     }
+
+    const enabledApiSyncConfigs = syncConfigs.filter((c) => c.isEnabled).length;
+    const healthySyncs = enabledApiSyncConfigs;
+
+    // Find schools needing attention (inactive OR 0 staff OR unconfigured API)
+    const schoolsWithCounts = await prisma.school.findMany({
+      where: {
+        OR: [
+          { status: "INACTIVE" },
+          { users: { none: { role: "ADMIN" } } },
+          { apiConfigs: { none: {} } },
+          { apiConfigs: { every: { isEnabled: false } } },
+        ],
+      },
+      select: {
+        id: true,
+        name: true,
+        code: true,
+        status: true,
+        apiConfigs: { select: { isEnabled: true }, take: 1 },
+        _count: { select: { users: true, students: true } },
+      },
+      take: 6,
+    });
+
+    const schoolsNeedingAttention = schoolsWithCounts.map((s) => {
+      const issues: string[] = [];
+      if (s.status === "INACTIVE") issues.push("Deactivated");
+      if (s._count.users === 0) issues.push("No staff provisioned");
+      const activeConfig = s.apiConfigs?.[0];
+      if (!activeConfig || !activeConfig.isEnabled) issues.push("API sync disabled");
+      return {
+        id: s.id,
+        name: s.name,
+        code: s.code,
+        status: s.status,
+        issues,
+        studentCount: s._count.students,
+        staffCount: s._count.users,
+      };
+    });
 
     res.json({
       success: true,
@@ -91,7 +173,18 @@ superAdminRouter.get("/metrics", async (_req: Request, res: Response) => {
         inactiveSchools,
         totalActiveStudents,
         staffByRole,
-        enabledApiSyncConfigs: syncMetrics._count.id,
+        enabledApiSyncConfigs,
+        totalObservations,
+        totalAssessments,
+        totalReports,
+        totalClasses,
+        apiSyncStats: {
+          totalConfigured: syncConfigs.length,
+          totalEnabled: enabledApiSyncConfigs,
+          healthySyncs,
+        },
+        schoolsNeedingAttention,
+        recentAuditLogs: recentLogs,
       },
     });
   } catch (error) {
@@ -119,12 +212,44 @@ superAdminRouter.get("/schools", async (req: Request, res: Response) => {
       where.status = status.toUpperCase();
     }
 
-    const [schools, totalCount] = await Promise.all([
+    const [rawSchools, totalCount] = await Promise.all([
       prisma.school.findMany({
         where,
         select: {
           ...SAFE_SCHOOL_FIELDS,
-          _count: { select: { users: true, students: true } },
+          apiConfigs: {
+            select: {
+              id: true,
+              isEnabled: true,
+              lastTestedAt: true,
+              lastSyncAt: true,
+              appVersion: true,
+              baseUrl: true,
+            },
+            take: 1,
+          },
+          schoolSettings: {
+            select: {
+              timezone: true,
+              locale: true,
+              defaultGradingSystem: true,
+            },
+          },
+          users: {
+            where: { role: "ADMIN" },
+            select: { id: true, name: true, email: true, status: true },
+            take: 2,
+          },
+          _count: {
+            select: {
+              users: true,
+              students: true,
+              observations: true,
+              studentAssessments: true,
+              reports: true,
+              classes: true,
+            },
+          },
         },
         orderBy: { createdAt: "desc" },
         skip,
@@ -132,6 +257,17 @@ superAdminRouter.get("/schools", async (req: Request, res: Response) => {
       }),
       prisma.school.count({ where }),
     ]);
+
+    const schools = rawSchools.map((s) => ({
+      ...s,
+      schoolApiConfig: s.apiConfigs?.[0]
+        ? {
+            ...s.apiConfigs[0],
+            apiBaseUrl: s.apiConfigs[0].baseUrl,
+            lastSyncedAt: s.apiConfigs[0].lastSyncAt,
+          }
+        : null,
+    }));
 
     res.json({ success: true, schools, totalCount, skip, take });
   } catch (error) {
@@ -208,16 +344,94 @@ superAdminRouter.get("/schools/:schoolId", async (req: Request, res: Response) =
     const id = parseInt(req.params.schoolId);
     if (isNaN(id)) return res.status(400).json({ success: false, error: "Invalid school ID." });
 
-    const school = await prisma.school.findUnique({
+    const rawSchool = await prisma.school.findUnique({
       where: { id },
       select: {
         ...SAFE_SCHOOL_FIELDS,
-        schoolSettings: { select: { timezone: true, locale: true, defaultGradingSystem: true } },
-        _count: { select: { users: true, students: true, observations: true } },
+        schoolSettings: {
+          select: {
+            timezone: true,
+            locale: true,
+            defaultGradingSystem: true,
+            anonymizeExports: true,
+            require2FA: true,
+          },
+        },
+        apiConfigs: {
+          select: {
+            id: true,
+            isEnabled: true,
+            baseUrl: true,
+            appVersion: true,
+            lastTestedAt: true,
+            lastSyncAt: true,
+          },
+          take: 1,
+        },
+        users: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+            status: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: "asc" },
+        },
+        classes: {
+          select: {
+            id: true,
+            name: true,
+            _count: { select: { sections: true, students: true } },
+          },
+          take: 10,
+        },
+        academicSessions: {
+          select: {
+            id: true,
+            name: true,
+            startDate: true,
+            endDate: true,
+            isCurrent: true,
+          },
+        },
+        systemAuditLogs: {
+          take: 10,
+          orderBy: { createdAt: "desc" },
+          select: {
+            id: true,
+            action: true,
+            outcome: true,
+            createdAt: true,
+            actor: { select: { id: true, name: true, email: true, role: true } },
+          },
+        },
+        _count: {
+          select: {
+            users: true,
+            students: true,
+            observations: true,
+            studentAssessments: true,
+            reports: true,
+            classes: true,
+          },
+        },
       },
     });
 
-    if (!school) return res.status(404).json({ success: false, error: "School not found." });
+    if (!rawSchool) return res.status(404).json({ success: false, error: "School not found." });
+
+    const school = {
+      ...rawSchool,
+      schoolApiConfig: rawSchool.apiConfigs?.[0]
+        ? {
+            ...rawSchool.apiConfigs[0],
+            apiBaseUrl: rawSchool.apiConfigs[0].baseUrl,
+            lastSyncedAt: rawSchool.apiConfigs[0].lastSyncAt,
+          }
+        : null,
+    };
 
     res.json({ success: true, school });
   } catch (error) {

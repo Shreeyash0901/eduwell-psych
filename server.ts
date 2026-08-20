@@ -15,6 +15,7 @@ import { reportsRouter } from "./src/server/reports";
 import { schoolApiRouter } from "./src/server/schoolApi";
 import { settingsRouter } from "./src/server/settings";
 import { notificationsRouter } from "./src/server/notifications";
+import { superAdminRouter } from "./src/server/superAdmin";
 import { requireAuth } from "./src/server/middleware/auth";
 import { serverConfig } from "./src/server/env";
 
@@ -61,6 +62,7 @@ app.use("/api/reports", reportsRouter);
 app.use("/api/school-api", schoolApiRouter);
 app.use("/api/settings", settingsRouter);
 app.use("/api/notifications", notificationsRouter);
+app.use("/api/super-admin", superAdminRouter);
 
 // Initialize Gemini API client on server
 const getGeminiClient = () => {
