@@ -19,11 +19,13 @@ import { prisma } from "../lib/db";
 import { requireAuth, AuthenticatedRequest } from "./middleware/auth";
 import { requireRole } from "./middleware/role";
 import { requireTenant } from "./middleware/tenant";
+import { globalAuditMiddleware } from "./middleware/audit";
 
 export const settingsRouter = Router();
 
 settingsRouter.use(requireAuth);
 settingsRouter.use(requireTenant);
+settingsRouter.use(globalAuditMiddleware);
 
 // Allow-list of updatable School profile fields.
 const SCHOOL_PROFILE_FIELDS = [
@@ -271,3 +273,175 @@ settingsRouter.get("/users", requireRole("ADMIN"), async (req: AuthenticatedRequ
     return res.status(500).json({ success: false, error: "Failed to load users." });
   }
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Classes & Sections management — ADMIN (Principal) only
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/settings/classes
+ * List all classes and their sections for the school.
+ */
+settingsRouter.get("/classes", requireRole("ADMIN"), async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const schoolId = req.user!.schoolId!;
+    const classes = await prisma.class.findMany({
+      where: { schoolId },
+      orderBy: { displayOrder: "asc" },
+      include: {
+        sections: { orderBy: { name: "asc" }, select: { id: true, name: true, isActive: true } },
+      },
+    });
+    return res.json({ success: true, classes });
+  } catch (error) {
+    console.error("[SETTINGS] GET /classes error:", error);
+    return res.status(500).json({ success: false, error: "Failed to load classes." });
+  }
+});
+
+/**
+ * POST /api/settings/classes
+ * Create a new grade/class for the school.
+ */
+settingsRouter.post("/classes", requireRole("ADMIN"), async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const schoolId = req.user!.schoolId!;
+    const name = safeString(req.body.name, 100);
+    if (!name) return res.status(400).json({ success: false, error: "Class name is required." });
+
+    const existing = await prisma.class.findFirst({ where: { schoolId, name } });
+    if (existing) return res.status(409).json({ success: false, error: `A class named "${name}" already exists.` });
+
+    const count = await prisma.class.count({ where: { schoolId } });
+    const newClass = await prisma.class.create({
+      data: { schoolId, name, displayOrder: count },
+      include: { sections: true },
+    });
+    return res.status(201).json({ success: true, class: newClass });
+  } catch (error) {
+    console.error("[SETTINGS] POST /classes error:", error);
+    return res.status(500).json({ success: false, error: "Failed to create class." });
+  }
+});
+
+/**
+ * PATCH /api/settings/classes/:classId
+ * Rename a class or toggle its active status.
+ */
+settingsRouter.patch("/classes/:classId", requireRole("ADMIN"), async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const schoolId = req.user!.schoolId!;
+    const classId = parseInt(req.params.classId);
+    if (isNaN(classId)) return res.status(400).json({ success: false, error: "Invalid class ID." });
+
+    const cls = await prisma.class.findFirst({ where: { id: classId, schoolId } });
+    if (!cls) return res.status(404).json({ success: false, error: "Class not found." });
+
+    const updates: Record<string, unknown> = {};
+    if (req.body.name !== undefined) {
+      const name = safeString(req.body.name, 100);
+      if (!name) return res.status(400).json({ success: false, error: "Class name cannot be empty." });
+      updates.name = name;
+    }
+    if (req.body.isActive !== undefined) updates.isActive = Boolean(req.body.isActive);
+
+    const updated = await prisma.class.update({
+      where: { id: classId },
+      data: updates,
+      include: { sections: { orderBy: { name: "asc" }, select: { id: true, name: true, isActive: true } } },
+    });
+    return res.json({ success: true, class: updated });
+  } catch (error) {
+    console.error("[SETTINGS] PATCH /classes/:classId error:", error);
+    return res.status(500).json({ success: false, error: "Failed to update class." });
+  }
+});
+
+/**
+ * DELETE /api/settings/classes/:classId
+ * Delete a class (only if it has no enrolled students).
+ */
+settingsRouter.delete("/classes/:classId", requireRole("ADMIN"), async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const schoolId = req.user!.schoolId!;
+    const classId = parseInt(req.params.classId);
+    if (isNaN(classId)) return res.status(400).json({ success: false, error: "Invalid class ID." });
+
+    const cls = await prisma.class.findFirst({ where: { id: classId, schoolId } });
+    if (!cls) return res.status(404).json({ success: false, error: "Class not found." });
+
+    const studentCount = await prisma.student.count({ where: { classId } });
+    if (studentCount > 0) {
+      return res.status(409).json({
+        success: false,
+        error: `Cannot delete "${cls.name}" — it has ${studentCount} enrolled student(s). Re-assign or remove them first.`,
+      });
+    }
+
+    await prisma.class.delete({ where: { id: classId } });
+    return res.json({ success: true, message: `Class "${cls.name}" deleted.` });
+  } catch (error) {
+    console.error("[SETTINGS] DELETE /classes/:classId error:", error);
+    return res.status(500).json({ success: false, error: "Failed to delete class." });
+  }
+});
+
+/**
+ * POST /api/settings/classes/:classId/sections
+ * Add a section to a class.
+ */
+settingsRouter.post("/classes/:classId/sections", requireRole("ADMIN"), async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const schoolId = req.user!.schoolId!;
+    const classId = parseInt(req.params.classId);
+    if (isNaN(classId)) return res.status(400).json({ success: false, error: "Invalid class ID." });
+
+    const cls = await prisma.class.findFirst({ where: { id: classId, schoolId } });
+    if (!cls) return res.status(404).json({ success: false, error: "Class not found." });
+
+    const name = safeString(req.body.name, 50);
+    if (!name) return res.status(400).json({ success: false, error: "Section name is required." });
+
+    const existing = await prisma.section.findFirst({ where: { classId, name } });
+    if (existing) return res.status(409).json({ success: false, error: `Section "${name}" already exists in this class.` });
+
+    const section = await prisma.section.create({ data: { classId, name } });
+    return res.status(201).json({ success: true, section });
+  } catch (error) {
+    console.error("[SETTINGS] POST /classes/:classId/sections error:", error);
+    return res.status(500).json({ success: false, error: "Failed to create section." });
+  }
+});
+
+/**
+ * DELETE /api/settings/classes/:classId/sections/:sectionId
+ * Remove a section (only if no students are assigned to it).
+ */
+settingsRouter.delete("/classes/:classId/sections/:sectionId", requireRole("ADMIN"), async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const schoolId = req.user!.schoolId!;
+    const classId = parseInt(req.params.classId);
+    const sectionId = parseInt(req.params.sectionId);
+    if (isNaN(classId) || isNaN(sectionId)) return res.status(400).json({ success: false, error: "Invalid IDs." });
+
+    const cls = await prisma.class.findFirst({ where: { id: classId, schoolId } });
+    if (!cls) return res.status(404).json({ success: false, error: "Class not found." });
+
+    const section = await prisma.section.findFirst({ where: { id: sectionId, classId } });
+    if (!section) return res.status(404).json({ success: false, error: "Section not found." });
+
+    const studentCount = await prisma.student.count({ where: { sectionId } });
+    if (studentCount > 0) {
+      return res.status(409).json({
+        success: false,
+        error: `Cannot remove section "${section.name}" — ${studentCount} student(s) are assigned to it.`,
+      });
+    }
+
+    await prisma.section.delete({ where: { id: sectionId } });
+    return res.json({ success: true, message: `Section "${section.name}" removed.` });
+  } catch (error) {
+    console.error("[SETTINGS] DELETE /classes/:classId/sections/:sectionId error:", error);
+    return res.status(500).json({ success: false, error: "Failed to delete section." });
+  }
+});

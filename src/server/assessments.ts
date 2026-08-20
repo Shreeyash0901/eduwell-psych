@@ -2,16 +2,18 @@ import { Router, Response } from "express";
 import { prisma } from "../lib/db";
 import { requireAuth, AuthenticatedRequest } from "./middleware/auth";
 import { requireTenant } from "./middleware/tenant";
+import { globalAuditMiddleware } from "./middleware/audit";
 import { Prisma } from "../generated/prisma/client";
 import { sanitizeAssessmentForRole, getTeacherAccess, checkTeacherStudentAccess } from "./services/reportAccess";
 import { NotificationService } from "./services/notificationService";
-import { NotificationType, NotificationPriority } from "../generated/prisma";
+import { NotificationType, NotificationPriority } from "../generated/prisma/client";
 
 export const assessmentsRouter = Router();
 
 // Protect all assessment endpoints with JWT authentication and school-scope verification
 assessmentsRouter.use(requireAuth);
 assessmentsRouter.use(requireTenant);
+assessmentsRouter.use(globalAuditMiddleware);
 
 /**
  * GET /api/assessments/templates

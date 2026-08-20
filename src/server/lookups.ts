@@ -5,11 +5,13 @@ import { Router, Response } from "express";
 import { prisma } from "../lib/db";
 import { requireAuth, AuthenticatedRequest } from "./middleware/auth";
 import { requireTenant } from "./middleware/tenant";
+import { globalAuditMiddleware } from "./middleware/audit";
 
 export const lookupsRouter = Router();
 
 lookupsRouter.use(requireAuth);
 lookupsRouter.use(requireTenant);
+lookupsRouter.use(globalAuditMiddleware);
 
 /**
  * GET /api/lookups/student-filters

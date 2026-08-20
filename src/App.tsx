@@ -547,7 +547,6 @@ function MainApplication() {
               studentId: 'STU-000',
               name: 'Student',
               grade: 'Grade 8',
-              schoolName: 'EduWell',
             };
             const targetStudent =
               students.find(
@@ -588,7 +587,6 @@ function MainApplication() {
               studentId: 'STU-000',
               name: 'Student',
               grade: 'Grade 8',
-              schoolName: 'EduWell',
             };
             const activeStudent =
               students.find((s) => s.name === activeAssessmentStudent) ||

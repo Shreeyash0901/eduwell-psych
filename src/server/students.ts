@@ -6,12 +6,14 @@ import { prisma } from "../lib/db";
 import { requireAuth, AuthenticatedRequest } from "./middleware/auth";
 import { requireRole } from "./middleware/role";
 import { respondNotFound, requireTenant } from "./middleware/tenant";
+import { globalAuditMiddleware } from "./middleware/audit";
 
 export const studentsRouter = Router();
 
 // Protect all student endpoints with JWT authentication and school-scope verification
 studentsRouter.use(requireAuth);
 studentsRouter.use(requireTenant);
+studentsRouter.use(globalAuditMiddleware);
 
 /**
  * GET /api/students

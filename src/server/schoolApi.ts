@@ -5,6 +5,7 @@ import { Router, Response } from "express";
 import { prisma } from "../lib/db";
 import { requireAuth, AuthenticatedRequest } from "./middleware/auth";
 import { requireRole } from "./middleware/role";
+import { globalAuditMiddleware } from "./middleware/audit";
 import {
   testSchoolApiConnection,
   validateUrlForSsrf,
@@ -16,6 +17,7 @@ export const schoolApiRouter = Router();
 // School API credentials and synchronization are ADMIN-only per specification.
 schoolApiRouter.use(requireAuth);
 schoolApiRouter.use(requireRole("ADMIN"));
+schoolApiRouter.use(globalAuditMiddleware);
 
 /**
  * GET /api/school-api/config

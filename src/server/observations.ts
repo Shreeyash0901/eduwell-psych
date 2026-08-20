@@ -6,14 +6,16 @@ import { prisma } from "../lib/db";
 import { requireAuth, AuthenticatedRequest } from "./middleware/auth";
 import { requireRole } from "./middleware/role";
 import { respondNotFound, requireTenant } from "./middleware/tenant";
+import { globalAuditMiddleware } from "./middleware/audit";
 import { NotificationService } from "./services/notificationService";
-import { NotificationType, NotificationPriority } from "../generated/prisma";
+import { NotificationType, NotificationPriority } from "../generated/prisma/client";
 
 export const observationsRouter = Router();
 
 // Protect all observation endpoints with JWT authentication and school-scope verification
 observationsRouter.use(requireAuth);
 observationsRouter.use(requireTenant);
+observationsRouter.use(globalAuditMiddleware);
 
 // Canonical DB status values
 const OBSERVATION_STATUSES = ["NEW", "PENDING_REVIEW", "REVIEWED", "ASSESSED"] as const;

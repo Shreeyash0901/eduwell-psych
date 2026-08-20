@@ -1,7 +1,8 @@
-import { Router, Request, Response } from "express";
+import { Router, Response } from "express";
 import { prisma } from "../lib/db";
-import { requireAuth } from "./middleware/auth";
+import { requireAuth, AuthenticatedRequest } from "./middleware/auth";
 import { requireTenant } from "./middleware/tenant";
+import { globalAuditMiddleware } from "./middleware/audit";
 import { NotificationService } from "./services/notificationService";
 
 export const notificationsRouter = Router();
@@ -10,13 +11,14 @@ const notificationService = new NotificationService(prisma as any);
 // Apply auth middleware to all routes
 notificationsRouter.use(requireAuth);
 notificationsRouter.use(requireTenant);
+notificationsRouter.use(globalAuditMiddleware);
 
 /**
  * GET /api/notifications
  * Retrieves paginated notifications for the authenticated user in their school.
  * Query params: unreadOnly (boolean), skip (number), take (number)
  */
-notificationsRouter.get("/", async (req: Request, res: Response) => {
+notificationsRouter.get("/", async (req: AuthenticatedRequest, res: Response) => {
   try {
     const user = req.user!;
     const unreadOnly = req.query.unreadOnly === "true";
@@ -24,7 +26,7 @@ notificationsRouter.get("/", async (req: Request, res: Response) => {
     const take = parseInt(req.query.take as string) || 20;
 
     const data = await notificationService.getUserNotifications(
-      user.schoolId,
+      user.schoolId!,
       user.id,
       unreadOnly,
       skip,
@@ -42,10 +44,10 @@ notificationsRouter.get("/", async (req: Request, res: Response) => {
  * GET /api/notifications/unread-count
  * Retrieves the count of unread notifications.
  */
-notificationsRouter.get("/unread-count", async (req: Request, res: Response) => {
+notificationsRouter.get("/unread-count", async (req: AuthenticatedRequest, res: Response) => {
   try {
     const user = req.user!;
-    const count = await notificationService.getUnreadCount(user.schoolId, user.id);
+    const count = await notificationService.getUnreadCount(user.schoolId!, user.id);
     res.status(200).json({ success: true, count });
   } catch (error) {
     console.error("Error fetching unread count:", error);
@@ -57,7 +59,7 @@ notificationsRouter.get("/unread-count", async (req: Request, res: Response) => 
  * PATCH /api/notifications/:id/read
  * Marks a specific notification as read.
  */
-notificationsRouter.patch("/:id/read", async (req: Request, res: Response) => {
+notificationsRouter.patch("/:id/read", async (req: AuthenticatedRequest, res: Response) => {
   try {
     const user = req.user!;
     const notificationId = parseInt(req.params.id);
@@ -66,7 +68,7 @@ notificationsRouter.patch("/:id/read", async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: "Invalid notification ID" });
     }
 
-    const notification = await notificationService.markAsRead(user.schoolId, user.id, notificationId);
+    const notification = await notificationService.markAsRead(user.schoolId!, user.id, notificationId);
 
     if (!notification) {
       return res.status(404).json({ success: false, error: "Notification not found" });
@@ -83,10 +85,10 @@ notificationsRouter.patch("/:id/read", async (req: Request, res: Response) => {
  * PATCH /api/notifications/read-all
  * Marks all unread notifications as read.
  */
-notificationsRouter.patch("/read-all", async (req: Request, res: Response) => {
+notificationsRouter.patch("/read-all", async (req: AuthenticatedRequest, res: Response) => {
   try {
     const user = req.user!;
-    const count = await notificationService.markAllAsRead(user.schoolId, user.id);
+    const count = await notificationService.markAllAsRead(user.schoolId!, user.id);
     res.status(200).json({ success: true, count });
   } catch (error) {
     console.error("Error marking all notifications as read:", error);
