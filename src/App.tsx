@@ -20,16 +20,11 @@ import { AssessmentSetupView } from './components/assessments/AssessmentSetupVie
 import { LoginView } from './components/auth/LoginView';
 import { NewObservationModal } from './components/observations/NewObservationModal';
 import { NewAssessmentModal } from './components/assessments/NewAssessmentModal';
+import { SuperAdminDashboard } from './components/super-admin/SuperAdminDashboard';
 import { Toaster } from 'sonner';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Brain } from 'lucide-react';
 
-import {
-  initialStudents,
-  assessmentProtocols,
-  sampleAssessmentResult,
-  demoUsers,
-} from './data/mockData';
 import {
   ActiveTab,
   Student,
@@ -38,6 +33,16 @@ import {
   AssessmentResult,
   UserRole,
 } from './types';
+
+const DEFAULT_PROTOCOL: AssessmentProtocol = {
+  id: '1',
+  title: 'Standard Screening Protocol',
+  description: 'Standardized psychological and behavioral screening protocol.',
+  domains: ['Emotional', 'Behavioral'],
+  questionCount: 0,
+  estTime: '15-20 mins',
+  questions: [],
+};
 
 const getTabFromPath = (): ActiveTab => {
   // Check hash first (e.g. #/teacher-add-concern or #student_profile?id=1)
@@ -87,8 +92,8 @@ function MainApplication() {
   const { user: currentUser, isLoading: isAuthLoading, logout, login } = useAuth();
 
   const [activeTab, setActiveTabState] = useState<ActiveTab>(() => getTabFromPath());
-  const [students, setStudents] = useState<Student[]>(initialStudents);
-  const [selectedProfileStudent, setSelectedProfileStudent] = useState<Student>(initialStudents[0]);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [selectedProfileStudent, setSelectedProfileStudent] = useState<Student | null>(null);
   const [selectedProfileStudentId, setSelectedProfileStudentId] = useState<string | number | null>(() => {
     const hash = window.location.hash;
     const match = hash.match(/[#?]id=([^&]+)/) || hash.match(/#student_profile\/([^?&]+)/);
@@ -107,13 +112,19 @@ function MainApplication() {
   useEffect(() => {
     if (currentUser) {
       if (activeTab === 'login') {
-        if (currentUser.role === 'teacher') {
+        if (currentUser.role === 'super_admin') {
+          setActiveTab('super_admin_dashboard');
+        } else if (currentUser.role === 'teacher') {
           setActiveTab('teacher_dashboard');
         } else if (currentUser.role === 'parent') {
           setActiveTab('parent_feedback');
         } else {
           setActiveTab('dashboard');
         }
+      }
+      // Guard: SUPER_ADMIN must never see the tenant layout
+      if (currentUser.role === 'super_admin' && !activeTab.startsWith('super_admin')) {
+        setActiveTab('super_admin_dashboard');
       }
     }
   }, [currentUser]);
@@ -137,8 +148,8 @@ function MainApplication() {
 
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  // Data State
-  const [protocols, setProtocols] = useState<AssessmentProtocol[]>(assessmentProtocols);
+  // Live Data State
+  const [protocols, setProtocols] = useState<AssessmentProtocol[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -151,7 +162,7 @@ function MainApplication() {
         const dataTemplates = await resTemplates.json();
         const dataStudents = await resStudents.json();
         
-        if (dataTemplates.success && !cancelled) {
+        if (dataTemplates.success && !cancelled && Array.isArray(dataTemplates.templates)) {
           const fetchedProtocols = dataTemplates.templates.map((t: any) => ({
             id: String(t.id),
             title: t.name,
@@ -172,13 +183,11 @@ function MainApplication() {
           }));
           if (fetchedProtocols.length > 0) {
             setProtocols(fetchedProtocols);
-            setSelectedProtocol((prev) => 
-              prev.id === assessmentProtocols[0].id ? fetchedProtocols[0] : prev
-            );
+            setSelectedProtocol(fetchedProtocols[0]);
           }
         }
         
-        if (dataStudents.success && !cancelled) {
+        if (dataStudents.success && !cancelled && Array.isArray(dataStudents.students)) {
           const fetchedStudents = dataStudents.students.map((s: any) => ({
             id: String(s.id),
             studentId: s.studentId,
@@ -188,6 +197,7 @@ function MainApplication() {
           }));
           if (fetchedStudents.length > 0) {
             setStudents(fetchedStudents);
+            setSelectedProfileStudent((prev) => prev || fetchedStudents[0]);
           }
         }
       } catch (err) {
@@ -204,13 +214,9 @@ function MainApplication() {
   const [selectedObservationId, setSelectedObservationId] = useState<string | null>(null);
   const [observationRefreshKey, setObservationRefreshKey] = useState<number>(0);
   const [observationCount, setObservationCount] = useState<number>(0);
-  const [selectedProtocol, setSelectedProtocol] = useState<AssessmentProtocol>(
-    assessmentProtocols[0]
-  );
-  const [activeAssessmentStudent, setActiveAssessmentStudent] = useState<string>('Alex Johnson');
-  const [assessmentResult, setAssessmentResult] = useState<AssessmentResult>(
-    sampleAssessmentResult
-  );
+  const [selectedProtocol, setSelectedProtocol] = useState<AssessmentProtocol>(DEFAULT_PROTOCOL);
+  const [activeAssessmentStudent, setActiveAssessmentStudent] = useState<string>('');
+  const [assessmentResult, setAssessmentResult] = useState<AssessmentResult | null>(null);
   const [psychologistReportData, setPsychologistReportData] = useState<{
     studentName?: string;
     clinicalInterpretation?: string;
@@ -381,6 +387,16 @@ function MainApplication() {
     return <LoginView />;
   }
 
+  // ── Super Admin Layout — completely separate from tenant layout ──
+  if (currentUser.role === 'super_admin') {
+    return (
+      <>
+        <Toaster position="top-right" richColors />
+        <SuperAdminDashboard onSignOut={handleSignOut} />
+      </>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-100/60 font-sans text-slate-800 flex antialiased">
       <Toaster position="top-right" richColors />
@@ -520,6 +536,13 @@ function MainApplication() {
           )}
 
           {activeTab === 'student_report_preview' && (() => {
+            const defaultEmptyStudent: Student = {
+              id: '0',
+              studentId: 'STU-000',
+              name: 'Student',
+              grade: 'Grade 8',
+              school: 'EduWell',
+            };
             const targetStudent =
               students.find(
                 (s) =>
@@ -527,7 +550,8 @@ function MainApplication() {
                   s.name === activeAssessmentStudent
               ) ||
               selectedProfileStudent ||
-              students[0];
+              students[0] ||
+              defaultEmptyStudent;
             return (
               <StudentReportPreviewView
                 student={targetStudent}
@@ -553,10 +577,18 @@ function MainApplication() {
           )}
 
           {activeTab === 'psychologist_interpretation' && (() => {
+            const defaultEmptyStudent: Student = {
+              id: '0',
+              studentId: 'STU-000',
+              name: 'Student',
+              grade: 'Grade 8',
+              school: 'EduWell',
+            };
             const activeStudent =
               students.find((s) => s.name === activeAssessmentStudent) ||
               selectedProfileStudent ||
-              students[0];
+              students[0] ||
+              defaultEmptyStudent;
             return (
               <PsychologistInterpretationView
                 studentName={activeStudent.name}

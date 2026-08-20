@@ -41,8 +41,8 @@ export const SectionPermissionDenied: React.FC<{
   title?: string;
   message?: string;
 }> = ({
-  title = 'Admin access required',
-  message = 'You do not have permission to view or modify this section. Please contact an admin.',
+  title = 'Principal access required',
+  message = 'You do not have permission to view or modify this section. Please contact your school principal.',
 }) => (
   <div className="flex flex-col items-center justify-center py-10 text-center px-6 border border-slate-200 rounded-2xl bg-white">
     <ShieldAlert className="w-8 h-8 text-amber-500 mb-3" />

@@ -1,5 +1,6 @@
 // src/server/middleware/auth.ts
-// Protected route middleware deriving identity strictly from verified JWT HttpOnly cookie
+// Protected route middleware deriving identity strictly from verified JWT HttpOnly cookie.
+// schoolId is nullable for SUPER_ADMIN users; all other roles must have a valid schoolId.
 
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
@@ -8,7 +9,7 @@ import { serverConfig } from "../env";
 
 export interface AuthenticatedUser {
   id: number;
-  schoolId: number;
+  schoolId: number | null; // null for SUPER_ADMIN only
   role: string;
   email: string;
   name: string;
@@ -60,6 +61,7 @@ export async function requireAuth(
         status: true,
         email: true,
         name: true,
+        school: { select: { status: true } },
       },
     });
 
@@ -67,6 +69,22 @@ export async function requireAuth(
       return res.status(401).json({
         success: false,
         error: "Unauthorized: Account not found or is no longer active.",
+      });
+    }
+
+    // Fail-closed: non-SUPER_ADMIN must have a schoolId.
+    if (user.role !== "SUPER_ADMIN" && user.schoolId === null) {
+      return res.status(401).json({
+        success: false,
+        error: "Unauthorized: Account has no associated school.",
+      });
+    }
+
+    // Block inactive-school tenant users (SUPER_ADMIN is not school-scoped).
+    if (user.role !== "SUPER_ADMIN" && user.school && user.school.status !== "ACTIVE") {
+      return res.status(403).json({
+        success: false,
+        error: "Forbidden: Your school account is currently inactive. Contact your administrator.",
       });
     }
 

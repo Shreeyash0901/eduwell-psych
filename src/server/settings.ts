@@ -18,10 +18,12 @@ import { Router, Response } from "express";
 import { prisma } from "../lib/db";
 import { requireAuth, AuthenticatedRequest } from "./middleware/auth";
 import { requireRole } from "./middleware/role";
+import { requireTenant } from "./middleware/tenant";
 
 export const settingsRouter = Router();
 
 settingsRouter.use(requireAuth);
+settingsRouter.use(requireTenant);
 
 // Allow-list of updatable School profile fields.
 const SCHOOL_PROFILE_FIELDS = [

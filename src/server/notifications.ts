@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { prisma } from "../lib/db";
 import { requireAuth } from "./middleware/auth";
+import { requireTenant } from "./middleware/tenant";
 import { NotificationService } from "./services/notificationService";
 
 export const notificationsRouter = Router();
@@ -8,6 +9,7 @@ const notificationService = new NotificationService(prisma as any);
 
 // Apply auth middleware to all routes
 notificationsRouter.use(requireAuth);
+notificationsRouter.use(requireTenant);
 
 /**
  * GET /api/notifications

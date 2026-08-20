@@ -308,7 +308,7 @@ export const SchoolApiSettingsSection: React.FC = () => {
 
           {!isAdmin && (
             <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 font-medium">
-              Read-only view. Only admins can modify School API settings.
+              Read-only view. Only the school Principal can modify School API settings.
             </div>
           )}
 

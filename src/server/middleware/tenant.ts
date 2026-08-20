@@ -11,17 +11,55 @@
 //
 // respondNotFound answers 404 when the resource is missing OR belongs to a
 // different school, so a cross-tenant identifier never leaks existence.
+//
+// SECURITY: schoolScopedWhere throws ForbiddenError if schoolId is null.
+// This is the fail-closed guard that prevents SUPER_ADMIN from obtaining
+// global access through ordinary tenant endpoints. SUPER_ADMIN must only
+// use /api/super-admin/* routes which have their own dedicated handlers.
 
-import { Response } from "express";
+import { Response, NextFunction } from "express";
+import { AuthenticatedRequest } from "./auth";
 
 export interface SchoolScopedRecord {
   schoolId?: number | null;
 }
 
+export class ForbiddenError extends Error {
+  readonly statusCode = 403;
+  constructor(message = "Forbidden: tenant scope required.") {
+    super(message);
+    this.name = "ForbiddenError";
+  }
+}
+
+/**
+ * Middleware that strictly enforces that the authenticated user belongs to a school.
+ * Rejects SUPER_ADMIN or any user with a null schoolId with 403 Forbidden.
+ */
+export function requireTenant(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+) {
+  if (!req.user || req.user.schoolId === null || req.user.schoolId === undefined) {
+    return res.status(403).json({
+      success: false,
+      error: "Forbidden: This endpoint requires a school-scoped account. Use /api/super-admin/* for platform-level access.",
+    });
+  }
+  return next();
+}
+
 /**
  * Base Prisma where fragment that pins a query to the authenticated school.
+ * Throws ForbiddenError if schoolId is null — prevents SUPER_ADMIN global bypass.
  */
-export function schoolScopedWhere(schoolId: number): { schoolId: number } {
+export function schoolScopedWhere(schoolId: number | null): { schoolId: number } {
+  if (schoolId === null || schoolId === undefined) {
+    throw new ForbiddenError(
+      "Forbidden: This endpoint requires a school-scoped account. Use /api/super-admin/* for platform-level access."
+    );
+  }
   return { schoolId };
 }
 

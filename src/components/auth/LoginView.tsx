@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { UserSession, UserRole } from '../../types';
-import { demoUsers } from '../../data/mockData';
+import { demoUsers } from '../../data/demoCredentials';
 import { useAuth } from '../../context/AuthContext';
 import {
   Mail,
@@ -120,7 +120,8 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
   const handleSelectPreset = (preset: UserSession) => {
     setSelectedPresetId(preset.id);
     setEmail(preset.email);
-    setPassword('password123');
+    const pass = preset.role === 'super_admin' ? 'SuperAdmin@2024!' : 'password123';
+    setPassword(pass);
     setLocalError('');
     clearError();
   };
@@ -165,6 +166,25 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
         return 'bg-amber-50 text-amber-800 border-amber-200';
       case 'admin':
         return 'bg-purple-50 text-purple-700 border-purple-200';
+      case 'super_admin':
+        return 'bg-indigo-50 text-indigo-700 border-indigo-200';
+    }
+  };
+
+  const getRoleBadgeLabel = (role: UserRole): string => {
+    switch (role) {
+      case 'psychologist':
+        return 'PSYCHOLOGIST';
+      case 'teacher':
+        return 'TEACHER';
+      case 'admin':
+        return 'PRINCIPAL';
+      case 'super_admin':
+        return 'SUPER ADMIN';
+      case 'parent':
+        return 'PARENT';
+      default:
+        return String(role).toUpperCase();
     }
   };
 
@@ -177,7 +197,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
       <div className="absolute -bottom-32 -right-32 w-96 h-96 bg-indigo-100/60 rounded-full blur-3xl pointer-events-none" />
 
       {/* Main Container */}
-      <div className="sm:mx-auto sm:w-full sm:max-w-xl z-10 space-y-6">
+      <div className="sm:mx-auto sm:w-full sm:max-w-2xl z-10 space-y-6">
         {/* Brand Header */}
         <div className="text-center space-y-2">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-blue-700 text-white shadow-md shadow-blue-700/20 mb-2">
@@ -211,9 +231,9 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
               </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
               {demoUsers
-                .filter((preset) => preset.role === 'psychologist' || preset.role === 'teacher' || preset.role === 'admin')
+                .filter((preset) => ['psychologist', 'teacher', 'admin', 'super_admin'].includes(preset.role))
                 .map((preset) => {
                 const isSelected = selectedPresetId === preset.id;
                 return (
@@ -221,34 +241,34 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
                     key={preset.id}
                     type="button"
                     onClick={() => handleSelectPreset(preset)}
-                    className={`p-3 rounded-xl border text-left flex items-start gap-3 transition-all cursor-pointer ${
+                    className={`p-2.5 rounded-xl border text-left flex flex-col justify-between gap-2 transition-all cursor-pointer ${
                       isSelected
                         ? 'border-blue-600 bg-blue-50/50 ring-2 ring-blue-600/20 shadow-2xs'
                         : 'border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50/60'
                     }`}
                   >
-                    <img
-                      src={preset.avatarUrl}
-                      alt={preset.name}
-                      className="w-8 h-8 rounded-full object-cover shrink-0 ring-1 ring-slate-200 mt-0.5"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="text-xs font-bold text-slate-900 truncate">
+                    <div className="flex items-center gap-2">
+                      <img
+                        src={preset.avatarUrl}
+                        alt={preset.name}
+                        className="w-7 h-7 rounded-full object-cover shrink-0 ring-1 ring-slate-200"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <span className="text-xs font-bold text-slate-900 block truncate">
                           {preset.name}
                         </span>
-                        {isSelected && (
-                          <CheckCircle2 className="w-3.5 h-3.5 text-blue-700 shrink-0" />
-                        )}
                       </div>
-                      <span
-                        className={`inline-block px-1.5 py-0.2 rounded text-[10px] font-bold uppercase border mt-1 ${getRoleBadgeStyle(
-                          preset.role
-                        )}`}
-                      >
-                        {preset.role}
-                      </span>
+                      {isSelected && (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-blue-700 shrink-0" />
+                      )}
                     </div>
+                    <span
+                      className={`self-start inline-block px-1.5 py-0.5 rounded text-[9px] font-bold uppercase border ${getRoleBadgeStyle(
+                        preset.role
+                      )}`}
+                    >
+                      {getRoleBadgeLabel(preset.role)}
+                    </span>
                   </button>
                 );
               })}
@@ -298,12 +318,13 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
                 <button
                   type="button"
                   onClick={() => {
-                    setPassword('password123');
-                    toast.info('Demo password set: password123');
+                    const pass = selectedPresetId === 'u-super-admin' ? 'SuperAdmin@2024!' : 'password123';
+                    setPassword(pass);
+                    toast.info(`Demo password set: ${pass}`);
                   }}
                   className="text-[11px] font-semibold text-blue-700 hover:underline cursor-pointer"
                 >
-                  Demo password: password123
+                  Demo password: {selectedPresetId === 'u-super-admin' ? 'SuperAdmin@2024!' : 'password123'}
                 </button>
               </div>
               <div className="relative">

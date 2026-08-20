@@ -15,9 +15,12 @@ export type ActiveTab =
   | 'student_report_preview'
   | 'settings'
   | 'parent_feedback'
-  | 'psychologist_interpretation';
+  | 'psychologist_interpretation'
+  | 'super_admin_dashboard'
+  | 'super_admin_schools'
+  | 'super_admin_audit';
 
-export type UserRole = 'psychologist' | 'teacher' | 'parent' | 'admin';
+export type UserRole = 'psychologist' | 'teacher' | 'parent' | 'admin' | 'super_admin';
 
 export interface UserSession {
   id: string;

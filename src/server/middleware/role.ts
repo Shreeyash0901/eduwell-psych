@@ -9,6 +9,11 @@
 // HTTP semantics:
 //   401 — authentication missing or invalid (no verified req.user)
 //   403 — authenticated but the user's role is not in the allowed set
+//
+// IMPORTANT: SUPER_ADMIN is explicitly NOT included in tenant roles.
+// To guard Super Admin routes, use requireRole("SUPER_ADMIN") only in
+// dedicated /api/super-admin/* routes. SUPER_ADMIN must NEVER automatically
+// pass ADMIN, PSYCHOLOGIST, or TEACHER checks.
 
 import { Response, NextFunction } from "express";
 import { AuthenticatedRequest } from "./auth";
@@ -17,6 +22,7 @@ export const ROLES = {
   ADMIN: "ADMIN",
   PSYCHOLOGIST: "PSYCHOLOGIST",
   TEACHER: "TEACHER",
+  SUPER_ADMIN: "SUPER_ADMIN",
 } as const;
 
 export type Role = keyof typeof ROLES;

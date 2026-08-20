@@ -4,6 +4,7 @@
 import { Router, Response } from "express";
 import { prisma } from "../lib/db";
 import { requireAuth, AuthenticatedRequest } from "./middleware/auth";
+import { requireTenant } from "./middleware/tenant";
 import {
   ActorContext,
   authorizeReportAccess,
@@ -18,8 +19,9 @@ import { NotificationType, NotificationPriority } from "../generated/prisma";
 
 export const reportsRouter = Router();
 
-// Protect all report endpoints with JWT authentication
+// Protect all report endpoints with JWT authentication and school-scope verification
 reportsRouter.use(requireAuth);
+reportsRouter.use(requireTenant);
 
 function getActor(req: AuthenticatedRequest): ActorContext {
   return {

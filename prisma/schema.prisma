@@ -48,6 +48,7 @@ model School {
   schoolApiAuditLogs  SchoolApiAuditLog[]
   notifications       Notification[]
   schoolSettings      SchoolSettings?
+  systemAuditLogs     SystemAuditLog[]
 
   @@map("schools")
 }
@@ -101,17 +102,19 @@ model SchoolApiConfig {
 
 model User {
   id           Int      @id @default(autoincrement())
-  schoolId     Int      @map("school_id")
+  // schoolId is nullable: SUPER_ADMIN has null, all other roles must have a school.
+  // Enforced by a PostgreSQL CHECK constraint in the migration.
+  schoolId     Int?     @map("school_id")
   name         String   @db.VarChar(100)
   email        String   @unique @db.VarChar(255)
   passwordHash String   @map("password_hash") @db.VarChar(255)
-  role         String   @default("TEACHER") @db.VarChar(30) // ADMIN, PSYCHOLOGIST, TEACHER
+  role         String   @default("TEACHER") @db.VarChar(30) // ADMIN, PSYCHOLOGIST, TEACHER, SUPER_ADMIN
   googleId     String?  @unique @map("google_id") @db.VarChar(255)
   status       String   @default("ACTIVE") @db.VarChar(20)
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
 
-  school                 School                 @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  school                 School?                @relation(fields: [schoolId], references: [id], onDelete: Restrict)
   uploadedImports        StudentImport[]        @relation("ImportUploadedBy")
   observationsSubmitted  StudentObservation[]   @relation("ObservationSubmittedBy")
   createdTemplates       AssessmentTemplate[]   @relation("TemplateCreatedBy")
@@ -122,6 +125,7 @@ model User {
   teacherSectionAccesses TeacherSectionAccess[]
   schoolApiAuditLogs     SchoolApiAuditLog[]
   notifications          Notification[]
+  systemAuditLogs        SystemAuditLog[]
 
   @@index([schoolId])
   @@map("users")
@@ -660,27 +664,53 @@ enum NotificationPriority {
 }
 
 model Notification {
-  id          Int                  @id @default(autoincrement())
-  schoolId    Int                  @map("school_id")
-  userId      Int                  @map("user_id")
-  type        NotificationType
-  priority    NotificationPriority @default(NORMAL)
-  title       String               @db.VarChar(255)
-  message     String               @db.Text
-  entityType  String?              @map("entity_type") @db.VarChar(50)
-  entityId    Int?                 @map("entity_id")
-  isRead      Boolean              @default(false) @map("is_read")
-  readAt      DateTime?            @map("read_at") @db.Timestamp(6)
-  dedupeKey   String?              @map("dedupe_key") @db.VarChar(255)
-  createdAt   DateTime             @default(now()) @map("created_at") @db.Timestamp(6)
-  expiresAt   DateTime?            @map("expires_at") @db.Timestamp(6)
+  id         Int                  @id @default(autoincrement())
+  schoolId   Int                  @map("school_id")
+  userId     Int                  @map("user_id")
+  type       NotificationType
+  priority   NotificationPriority @default(NORMAL)
+  title      String               @db.VarChar(255)
+  message    String               @db.Text
+  entityType String?              @map("entity_type") @db.VarChar(50)
+  entityId   Int?                 @map("entity_id")
+  isRead     Boolean              @default(false) @map("is_read")
+  readAt     DateTime?            @map("read_at") @db.Timestamp(6)
+  dedupeKey  String?              @map("dedupe_key") @db.VarChar(255)
+  createdAt  DateTime             @default(now()) @map("created_at") @db.Timestamp(6)
+  expiresAt  DateTime?            @map("expires_at") @db.Timestamp(6)
 
-  school      School               @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  user        User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([schoolId, dedupeKey])
   @@index([schoolId])
   @@index([userId])
   @@index([isRead])
   @@map("notifications")
+}
+
+// ============================================================
+// 26. system_audit_logs — Platform-Level Super Admin Audit Trail
+// Never stores clinical data, passwords, tokens, or confidential content.
+// ============================================================
+
+model SystemAuditLog {
+  id             Int      @id @default(autoincrement())
+  actorUserId    Int      @map("actor_user_id")
+  action         String   @db.VarChar(100) // e.g. "school.create", "school.deactivate"
+  targetType     String?  @map("target_type") @db.VarChar(50) // e.g. "SCHOOL", "USER"
+  targetId       Int?     @map("target_id")
+  targetSchoolId Int?     @map("target_school_id")
+  metadata       Json     @default("{}") // Safe operational metadata only
+  requestId      String?  @map("request_id") @db.VarChar(100)
+  outcome        String   @default("SUCCESS") @db.VarChar(20) // SUCCESS, FAILURE
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  actor        User    @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+  targetSchool School? @relation(fields: [targetSchoolId], references: [id], onDelete: SetNull)
+
+  @@index([actorUserId])
+  @@index([targetSchoolId])
+  @@index([createdAt])
+  @@map("system_audit_logs")
 }

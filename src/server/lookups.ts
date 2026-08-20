@@ -4,10 +4,12 @@
 import { Router, Response } from "express";
 import { prisma } from "../lib/db";
 import { requireAuth, AuthenticatedRequest } from "./middleware/auth";
+import { requireTenant } from "./middleware/tenant";
 
 export const lookupsRouter = Router();
 
 lookupsRouter.use(requireAuth);
+lookupsRouter.use(requireTenant);
 
 /**
  * GET /api/lookups/student-filters

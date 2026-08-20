@@ -33,7 +33,7 @@ function normalizeRole(role: string): string {
 // Helper to sanitize and map safe user representation
 function toSafeUser(user: {
   id: number;
-  schoolId: number;
+  schoolId: number | null;
   name: string;
   email: string;
   role: string;
@@ -45,7 +45,7 @@ function toSafeUser(user: {
     name: user.name,
     email: user.email,
     role: normalizeRole(user.role),
-    schoolName: user.school?.name || "Westside Academy",
+    schoolName: user.school?.name || (user.role === 'SUPER_ADMIN' ? 'Platform' : 'Westside Academy'),
   };
 }
 

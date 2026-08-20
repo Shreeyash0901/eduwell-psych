@@ -26,7 +26,9 @@ export function getRoleTitle(role: string): string {
     case 'parent':
       return 'Parent / Guardian';
     case 'admin':
-      return 'Admin';
+      return 'School Principal';
+    case 'super_admin':
+      return 'Platform Administrator';
     default:
       return 'School Staff';
   }
@@ -48,6 +50,8 @@ export function getRoleAvatar(role: string, email?: string): string {
       return 'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&q=80&w=120';
     case 'admin':
       return 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=120';
+    case 'super_admin':
+      return 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&q=80&w=120';
     default:
       return 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=120';
   }

@@ -5,14 +5,15 @@ import { Router, Response } from "express";
 import { prisma } from "../lib/db";
 import { requireAuth, AuthenticatedRequest } from "./middleware/auth";
 import { requireRole } from "./middleware/role";
-import { respondNotFound } from "./middleware/tenant";
+import { respondNotFound, requireTenant } from "./middleware/tenant";
 import { NotificationService } from "./services/notificationService";
 import { NotificationType, NotificationPriority } from "../generated/prisma";
 
 export const observationsRouter = Router();
 
-// Protect all observation endpoints with JWT authentication
+// Protect all observation endpoints with JWT authentication and school-scope verification
 observationsRouter.use(requireAuth);
+observationsRouter.use(requireTenant);
 
 // Canonical DB status values
 const OBSERVATION_STATUSES = ["NEW", "PENDING_REVIEW", "REVIEWED", "ASSESSED"] as const;

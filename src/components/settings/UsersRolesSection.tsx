@@ -16,7 +16,7 @@ interface UserRecord {
 }
 
 const ROLE_LABELS: Record<string, string> = {
-  ADMIN: 'Administrator',
+  ADMIN: 'Principal',
   PSYCHOLOGIST: 'Psychologist',
   TEACHER: 'Teacher',
 };

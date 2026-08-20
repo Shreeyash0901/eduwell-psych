@@ -248,12 +248,12 @@ async function main() {
   });
 
   await prisma.user.upsert({
-    where: { email: "admin@eduwell.org" },
+    where: { email: "principal@eduwell.org" },
     update: { name: "Principal Robert Mercer", role: "ADMIN", status: "ACTIVE", passwordHash: defaultPasswordHash },
     create: {
       schoolId: school.id,
       name: "Principal Robert Mercer",
-      email: "admin@eduwell.org",
+      email: "principal@eduwell.org",
       passwordHash: defaultPasswordHash,
       role: "ADMIN",
       status: "ACTIVE",
@@ -822,7 +822,23 @@ async function main() {
   }
   console.log(`  ✅ 11. Report & Immutable Snapshot created`);
 
-  console.log("\n🎉 Seed complete! All 20 tables successfully seeded with connected relational data.");
+  // ── 12. Super Admin User (platform-level, no school) ──────────
+  const superAdminPassword = await bcrypt.hash("SuperAdmin@2024!", 10);
+  await prisma.user.upsert({
+    where: { email: "superadmin@eduwell.platform" },
+    update: {},
+    create: {
+      name: "Platform Administrator",
+      email: "superadmin@eduwell.platform",
+      passwordHash: superAdminPassword,
+      role: "SUPER_ADMIN",
+      schoolId: null, // Required: SUPER_ADMIN must have null schoolId (DB CHECK constraint)
+      status: "ACTIVE",
+    },
+  });
+  console.log(`  ✅ 12. Super Admin user seeded (email: superadmin@eduwell.platform)`);
+
+  console.log("\n🎉 Seed complete! All tables successfully seeded with connected relational data.");
 }
 
 main()
@@ -833,3 +849,4 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
+
