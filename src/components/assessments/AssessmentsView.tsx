@@ -1,11 +1,47 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AssessmentProtocol, ActiveTab } from '../../types';
-import { Smile, Brain, Target, Play, Plus, Sliders, ChevronLeft, ChevronRight } from 'lucide-react';
+import {
+  Smile,
+  Brain,
+  Target,
+  Play,
+  Plus,
+  Sliders,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  UserCheck,
+  Sparkles,
+  ArrowRight,
+  Send,
+  AlertCircle,
+  FileCheck,
+  Users,
+} from 'lucide-react';
 import { TemplateBuilderModal } from './TemplateBuilderModal';
+
+interface AssignedAssessmentItem {
+  id: number;
+  studentId: string;
+  studentName: string;
+  grade: string;
+  protocolId: string;
+  protocolTitle: string;
+  domains: string[];
+  questionCount: number;
+  estTime: string;
+  questions: any[];
+  respondentType: string;
+  status: string;
+  dueDate: string | null;
+  instructions: string;
+  assignedBy: string;
+  createdAt: string;
+}
 
 interface AssessmentsViewProps {
   protocols: AssessmentProtocol[];
-  onStartProtocol: (protocol: AssessmentProtocol) => void;
+  onStartProtocol: (protocol: AssessmentProtocol, studentName?: string) => void;
   setActiveTab: (tab: ActiveTab) => void;
   onRefreshProtocols?: () => void;
 }
@@ -17,8 +53,30 @@ export const AssessmentsView: React.FC<AssessmentsViewProps> = ({
   onRefreshProtocols,
 }) => {
   const [isBuilderOpen, setIsBuilderOpen] = useState(false);
+  const [assignedAssessments, setAssignedAssessments] = useState<AssignedAssessmentItem[]>([]);
+  const [loadingAssigned, setLoadingAssigned] = useState(false);
   const [page, setPage] = useState(1);
   const limit = 6;
+
+  const fetchAssigned = async () => {
+    setLoadingAssigned(true);
+    try {
+      const res = await fetch('/api/assessments/assigned', { credentials: 'include' });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.assessments)) {
+        setAssignedAssessments(data.assessments);
+      }
+    } catch (err) {
+      console.error('[AssessmentsView] failed to load assigned assessments:', err);
+    } finally {
+      setLoadingAssigned(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAssigned();
+  }, []);
+
   const totalPages = Math.ceil(protocols.length / limit) || 1;
   const paginatedProtocols = protocols.slice((page - 1) * limit, page * limit);
 
@@ -31,25 +89,41 @@ export const AssessmentsView: React.FC<AssessmentsViewProps> = ({
       case 'p3':
         return <Target className="w-5 h-5 text-blue-600" />;
       default:
-        return <Smile className="w-5 h-5 text-blue-600" />;
+        return <Brain className="w-5 h-5 text-blue-600" />;
     }
   };
 
+  const handleStartAssigned = (item: AssignedAssessmentItem) => {
+    const protocolObj: AssessmentProtocol = {
+      id: item.protocolId,
+      title: item.protocolTitle,
+      description: item.instructions || `Assigned assessment for ${item.studentName}`,
+      domains: item.domains || ['Emotional Regulation', 'Social Integration'],
+      questionCount: item.questionCount || item.questions?.length || 5,
+      estTime: item.estTime || '10 mins',
+      questions: item.questions || [],
+    };
+
+    onStartProtocol(protocolObj, item.studentName);
+  };
+
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-6">
+    <div className="p-6 sm:p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-150">
       {/* Header Title Section */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Assessment Library</h1>
-          <p className="text-sm text-slate-500 font-medium mt-1 max-w-3xl">
-            Conduct structured student assessments and review results. Select an assessment protocol below to begin a new session.
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
+            Assessment &amp; Screening Library
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-500 font-medium mt-1 max-w-3xl">
+            Conduct standardized clinical screenings, assign editable evaluations to teachers, students, or parents, and synthesize results.
           </p>
         </div>
 
         <div className="flex items-center gap-3">
           <button
             onClick={() => setIsBuilderOpen(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold shadow-xs transition-colors shrink-0 cursor-pointer"
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-xs sm:text-sm font-semibold shadow-xs transition-colors shrink-0 cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>Create Protocol</span>
@@ -57,7 +131,7 @@ export const AssessmentsView: React.FC<AssessmentsViewProps> = ({
 
           <button
             onClick={() => setActiveTab('psychologist_interpretation')}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 rounded-lg text-sm font-semibold shadow-2xs transition-colors shrink-0 cursor-pointer"
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 rounded-xl text-xs sm:text-sm font-semibold shadow-2xs transition-colors shrink-0 cursor-pointer"
           >
             <Brain className="w-4 h-4 text-indigo-600" />
             <span>Clinical Interpretation</span>
@@ -65,44 +139,134 @@ export const AssessmentsView: React.FC<AssessmentsViewProps> = ({
         </div>
       </div>
 
+      {/* HIGHLIGHTED SECTION: Assigned & Pending Assessments */}
+      {assignedAssessments.length > 0 && (
+        <div className="bg-gradient-to-r from-blue-600/10 via-indigo-600/10 to-violet-600/10 border-2 border-indigo-400/80 rounded-3xl p-6 sm:p-7 shadow-[0_8px_32px_rgba(79,70,229,0.12)] relative overflow-hidden space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5">
+              <span className="relative flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-600"></span>
+              </span>
+              <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <span>Active Assigned Assessments</span>
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-600 text-white shadow-2xs">
+                  {assignedAssessments.length} Active
+                </span>
+              </h2>
+            </div>
+            <p className="text-xs text-slate-500 font-medium">
+              Evaluations assigned to teachers, parents, or students pending submission
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {assignedAssessments.map((item) => (
+              <div
+                key={item.id}
+                className="bg-white rounded-2xl p-5 border border-indigo-100/90 shadow-sm flex flex-col justify-between space-y-4 hover:border-indigo-300 hover:shadow-md transition-all group"
+              >
+                <div>
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
+                      <Users className="w-3 h-3" />
+                      Assigned to {item.respondentType}
+                    </span>
+
+                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+                      <Clock className="w-3 h-3" />
+                      Due {item.dueDate || 'Soon'}
+                    </span>
+                  </div>
+
+                  <h3 className="font-bold text-sm text-slate-900 mt-2.5 group-hover:text-indigo-600 transition-colors">
+                    {item.protocolTitle}
+                  </h3>
+
+                  <div className="mt-2 text-xs space-y-1">
+                    <p className="font-semibold text-slate-800">
+                      Student: <span className="text-blue-700">{item.studentName}</span> ({item.studentId})
+                    </p>
+                    <p className="text-[11px] text-slate-400">
+                      Assigned by: <span className="font-medium text-slate-600">{item.assignedBy}</span>
+                    </p>
+                    {item.instructions && (
+                      <p className="text-[11px] text-slate-600 italic bg-slate-50 p-2 rounded-lg mt-2 border border-slate-100 line-clamp-2">
+                        &ldquo;{item.instructions}&rdquo;
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                  <span className="text-[11px] text-slate-400">
+                    {item.questionCount} Questions
+                  </span>
+                  <button
+                    onClick={() => handleStartAssigned(item)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-2xs transition-colors cursor-pointer"
+                  >
+                    <span>Complete Now</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Protocol Cards Grid Section Header */}
+      <div className="flex items-center justify-between pt-2">
+        <h2 className="text-lg font-bold text-slate-900">Standardized Protocol Library</h2>
+        <span className="text-xs font-semibold text-slate-500">
+          Showing {protocols.length} Available Protocols
+        </span>
+      </div>
+
       {/* Protocol Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {paginatedProtocols.map((protocol) => (
           <div
             key={protocol.id}
-            className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col justify-between hover:shadow-lg hover:border-slate-300 transition-all duration-300"
+            className="bg-white border border-slate-200/80 rounded-3xl p-6 shadow-sm flex flex-col justify-between hover:shadow-lg hover:border-slate-300 transition-all duration-300 group"
           >
-            <div className="space-y-5">
+            <div className="space-y-4">
               {/* Icon & Title */}
               <div className="flex items-start gap-3">
-                <div className="p-2.5 bg-blue-100 rounded-xl shrink-0">
+                <div className="p-2.5 bg-blue-50 border border-blue-100 rounded-2xl shrink-0 group-hover:scale-105 transition-transform">
                   {getProtocolIcon(protocol.id)}
                 </div>
-                <h3 className="font-bold text-base text-slate-900 leading-snug mt-0.5">
-                  {protocol.title}
-                </h3>
+                <div>
+                  <h3 className="font-bold text-base text-slate-900 leading-snug">
+                    {protocol.title}
+                  </h3>
+                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100 mt-1 inline-block">
+                    Active Protocol
+                  </span>
+                </div>
               </div>
 
               {/* Description */}
-              <p className="text-sm text-slate-600 leading-relaxed font-normal">
+              <p className="text-xs text-slate-600 leading-relaxed font-normal">
                 {protocol.description}
               </p>
 
               {/* Protocol Metadata Box */}
-              <div className="bg-gradient-to-br from-slate-50 to-slate-50/50 rounded-xl p-4 space-y-3 border border-slate-200/60">
+              <div className="bg-slate-50/70 rounded-2xl p-4 space-y-2.5 border border-slate-200/60 text-xs">
                 <div className="flex items-start justify-between gap-2">
-                  <span className="text-slate-600 font-semibold text-xs leading-tight">Domain:</span>
-                  <span className="text-slate-900 font-medium text-xs text-right leading-tight">
+                  <span className="text-slate-500 font-medium">Domain:</span>
+                  <span className="text-slate-900 font-semibold text-right leading-tight">
                     {protocol.domains.join(', ')}
                   </span>
                 </div>
                 <div className="flex items-start justify-between gap-2">
-                  <span className="text-slate-600 font-semibold text-xs leading-tight">Questions</span>
-                  <span className="text-slate-900 font-semibold text-xs text-right">{protocol.questionCount} Items</span>
+                  <span className="text-slate-500 font-medium">Questions:</span>
+                  <span className="text-slate-900 font-bold text-right">{protocol.questionCount} Items</span>
                 </div>
                 <div className="flex items-start justify-between gap-2">
-                  <span className="text-slate-600 font-semibold text-xs leading-tight">Est. Time</span>
-                  <span className="text-slate-900 font-semibold text-xs text-right">{protocol.estTime}</span>
+                  <span className="text-slate-500 font-medium">Est. Duration:</span>
+                  <span className="text-slate-900 font-bold text-right">{protocol.estTime}</span>
                 </div>
               </div>
             </div>
@@ -111,10 +275,10 @@ export const AssessmentsView: React.FC<AssessmentsViewProps> = ({
             <div className="pt-6">
               <button
                 onClick={() => onStartProtocol(protocol)}
-                className="w-full py-2.5 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm transition-colors"
+                className="w-full py-2.5 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer"
               >
                 <Play className="w-3.5 h-3.5 fill-current" />
-                Start Assessment
+                <span>Launch / Assign Screening</span>
               </button>
             </div>
           </div>
@@ -123,7 +287,7 @@ export const AssessmentsView: React.FC<AssessmentsViewProps> = ({
 
       {/* Pagination Controls */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between bg-white border border-slate-200 rounded-xl px-6 py-4 shadow-sm mt-6">
+        <div className="flex items-center justify-between bg-white border border-slate-200 rounded-2xl px-6 py-4 shadow-sm mt-6">
           <span className="text-xs text-slate-500 font-medium">
             Showing {(page - 1) * limit + 1} to {Math.min(page * limit, protocols.length)} of {protocols.length} protocols
           </span>
@@ -131,7 +295,7 @@ export const AssessmentsView: React.FC<AssessmentsViewProps> = ({
             <button
               disabled={page === 1}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="p-1.5 rounded-md text-slate-600 hover:bg-slate-200 disabled:opacity-50 transition-colors cursor-pointer"
+              className="p-1.5 rounded-md text-slate-600 hover:bg-slate-100 disabled:opacity-40 transition-colors cursor-pointer"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
@@ -141,7 +305,7 @@ export const AssessmentsView: React.FC<AssessmentsViewProps> = ({
             <button
               disabled={page === totalPages}
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              className="p-1.5 rounded-md text-slate-600 hover:bg-slate-200 disabled:opacity-50 transition-colors cursor-pointer"
+              className="p-1.5 rounded-md text-slate-600 hover:bg-slate-100 disabled:opacity-40 transition-colors cursor-pointer"
             >
               <ChevronRight className="w-4 h-4" />
             </button>

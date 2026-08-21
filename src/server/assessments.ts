@@ -439,6 +439,230 @@ assessmentsRouter.post("/start", async (req: AuthenticatedRequest, res: Response
 });
 
 /**
+ * POST /api/assessments/assign
+ * Psychologist assigns an assessment to a Teacher, Student, or Parent.
+ * Supports custom instructions, due date, respondent type, and custom questions.
+ */
+assessmentsRouter.post("/assign", async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const schoolId = req.user!.schoolId;
+    const {
+      studentId: rawStudentId,
+      assessmentTemplateId,
+      respondentType = "TEACHER",
+      dueDate,
+      instructions,
+      observationId,
+      customQuestions,
+    } = req.body;
+
+    if (!rawStudentId || !assessmentTemplateId) {
+      return res.status(400).json({ success: false, error: "Missing studentId or assessmentTemplateId." });
+    }
+
+    const idNum = parseInt(String(rawStudentId), 10);
+    const studentWhere: any = {
+      schoolId,
+      OR: !isNaN(idNum) && String(idNum) === String(rawStudentId)
+        ? [{ id: idNum }]
+        : [{ studentId: String(rawStudentId) }],
+    };
+
+    const student = await prisma.student.findFirst({
+      where: studentWhere,
+      include: {
+        class: true,
+        section: true,
+      },
+    });
+
+    if (!student) {
+      return res.status(404).json({ success: false, error: "Student not found." });
+    }
+
+    // Find template
+    const template = await prisma.assessmentTemplate.findFirst({
+      where: { schoolId, id: Number(assessmentTemplateId) },
+      include: { domains: true },
+    });
+
+    if (!template) {
+      return res.status(404).json({ success: false, error: "Assessment template not found." });
+    }
+
+    const parsedDueDate = dueDate ? new Date(dueDate) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    const createdAssessment = await prisma.studentAssessment.create({
+      data: {
+        schoolId,
+        studentId: student.id,
+        assessmentTemplateId: template.id,
+        status: "ASSIGNED",
+        respondentType: String(respondentType).toUpperCase(),
+        dueDate: parsedDueDate,
+        instructions: instructions ? String(instructions) : null,
+        observationId: observationId ? Number(observationId) : null,
+        createdBy: req.user!.id,
+      },
+      include: {
+        student: {
+          select: { id: true, studentId: true, fullName: true, firstName: true, lastName: true },
+        },
+        assessmentTemplate: {
+          select: { id: true, name: true, category: true, estimatedMinutes: true },
+        },
+        creator: {
+          select: { id: true, name: true, role: true },
+        },
+      },
+    });
+
+    // Notify Teachers if assigned to TEACHER
+    try {
+      const notificationService = new NotificationService(prisma as any);
+      const studentDisplayName = student.fullName || `${student.firstName || ""} ${student.lastName || ""}`.trim() || student.studentId;
+
+      // Find teachers assigned to this student's class/section
+      let targetTeachers: { id: number }[] = [];
+      if (student.classId) {
+        const classTeachers = await prisma.teacherClassAccess.findMany({
+          where: { classId: student.classId },
+          select: { userId: true },
+        });
+        targetTeachers.push(...classTeachers.map((t) => ({ id: t.userId })));
+      }
+
+      // If no specific class teachers, notify all active teachers in school
+      if (targetTeachers.length === 0) {
+        const allTeachers = await prisma.user.findMany({
+          where: { schoolId, role: "TEACHER", status: "ACTIVE" },
+          select: { id: true },
+        });
+        targetTeachers = allTeachers.map((t) => ({ id: t.id }));
+      }
+
+      for (const teacher of targetTeachers) {
+        await notificationService.createNotification({
+          schoolId,
+          userId: teacher.id,
+          type: "ASSESSMENT",
+          priority: "HIGH",
+          title: "New Assessment Assigned",
+          message: `${req.user!.name} assigned "${template.name}" for ${studentDisplayName}. Due by ${parsedDueDate.toLocaleDateString()}.`,
+          entityType: "ASSESSMENT",
+          entityId: createdAssessment.id,
+          dedupeKey: `assessment-assign-${createdAssessment.id}-${teacher.id}`,
+        });
+      }
+    } catch (notifyErr) {
+      console.error("[ASSESSMENTS_API] Notification dispatch error:", notifyErr);
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: `Assessment successfully assigned to ${respondentType.toLowerCase()}.`,
+      assessment: createdAssessment,
+    });
+  } catch (error) {
+    console.error("[ASSESSMENTS_API] POST /assign error:", error);
+    return res.status(500).json({ success: false, error: "Failed to assign assessment." });
+  }
+});
+
+/**
+ * GET /api/assessments/assigned
+ * Retrieve active assigned assessments for the school or current user's classes.
+ */
+assessmentsRouter.get("/assigned", async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const schoolId = req.user!.schoolId;
+    const isTeacher = req.user!.role.toUpperCase() === "TEACHER";
+
+    let whereCondition: any = {
+      schoolId,
+      status: { in: ["ASSIGNED", "IN_PROGRESS"] },
+    };
+
+    if (isTeacher) {
+      const teacherAccess = await getTeacherAccess(req.user!.id);
+      const orConditions: any[] = [];
+      if (teacherAccess.classIds.length > 0) {
+        orConditions.push({ student: { classId: { in: teacherAccess.classIds } } });
+      }
+      if (teacherAccess.sectionIds.length > 0) {
+        orConditions.push({ student: { sectionId: { in: teacherAccess.sectionIds } } });
+      }
+      if (orConditions.length > 0) {
+        whereCondition.OR = orConditions;
+      }
+    }
+
+    const assignedList = await prisma.studentAssessment.findMany({
+      where: whereCondition,
+      include: {
+        student: {
+          select: {
+            id: true,
+            studentId: true,
+            fullName: true,
+            firstName: true,
+            lastName: true,
+            class: { select: { name: true } },
+            section: { select: { name: true } },
+          },
+        },
+        assessmentTemplate: {
+          include: {
+            domains: { orderBy: { displayOrder: "asc" } },
+            questions: {
+              orderBy: { displayOrder: "asc" },
+              include: { options: { orderBy: { displayOrder: "asc" } } },
+            },
+          },
+        },
+        creator: {
+          select: { id: true, name: true, role: true },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const formatted = assignedList.map((a) => ({
+      id: a.id,
+      studentId: a.student.studentId,
+      studentName:
+        a.student.fullName ||
+        [a.student.firstName, a.student.lastName].filter(Boolean).join(" ") ||
+        a.student.studentId,
+      grade: a.student.class?.name || "Grade",
+      section: a.student.section?.name || "",
+      protocolId: String(a.assessmentTemplate.id),
+      protocolTitle: a.assessmentTemplate.name,
+      domains: a.assessmentTemplate.domains.map((d) => d.name),
+      questionCount: a.assessmentTemplate.questions.length,
+      estTime: `${a.assessmentTemplate.estimatedMinutes || 10} mins`,
+      questions: a.assessmentTemplate.questions.map((q) => ({
+        id: q.id,
+        text: q.questionText,
+        domain: a.assessmentTemplate.domains.find((d) => d.id === q.domainId)?.name || "General",
+        options: q.options.map((o) => ({ label: o.label, score: Number(o.score) })),
+      })),
+      respondentType: a.respondentType || "TEACHER",
+      status: a.status,
+      dueDate: a.dueDate ? a.dueDate.toISOString().split("T")[0] : null,
+      instructions: a.instructions || "",
+      assignedBy: a.creator.name,
+      createdAt: a.createdAt.toISOString(),
+    }));
+
+    return res.json({ success: true, assessments: formatted });
+  } catch (error) {
+    console.error("[ASSESSMENTS_API] GET /assigned error:", error);
+    return res.status(500).json({ success: false, error: "Failed to retrieve assigned assessments." });
+  }
+});
+
+/**
  * PUT /api/assessments/:id/responses
  * Save or update responses for an in-progress assessment.
  */

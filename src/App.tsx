@@ -465,6 +465,11 @@ function MainApplication() {
             <TeacherDashboardView
               user={currentUser}
               onAddConcern={() => setActiveTab('teacher_add_concern')}
+              onStartAssessment={(studentName, prot) => {
+                setActiveAssessmentStudent(studentName);
+                setSelectedProtocol(prot);
+                setActiveTab('assessment_runner');
+              }}
               setActiveTab={setActiveTab}
             />
           )}
@@ -508,7 +513,15 @@ function MainApplication() {
           {activeTab === 'assessments' && (
             <AssessmentsView
               protocols={protocols}
-              onStartProtocol={handleStartProtocol}
+              onStartProtocol={(prot, studentName) => {
+                setSelectedProtocol(prot);
+                if (studentName) {
+                  setActiveAssessmentStudent(studentName);
+                  setActiveTab('assessment_runner');
+                } else {
+                  setActiveTab('assessment_setup');
+                }
+              }}
               setActiveTab={setActiveTab}
               onRefreshProtocols={fetchProtocols}
             />

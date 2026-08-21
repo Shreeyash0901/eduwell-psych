@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ActiveTab, UserSession, ObservationRecord } from '../../types';
+import { ActiveTab, UserSession, ObservationRecord, AssessmentProtocol } from '../../types';
 import {
   Plus,
   Clock,
@@ -9,22 +9,49 @@ import {
   Info,
   GraduationCap,
   BookOpen,
-  Users
+  Users,
+  ClipboardList,
+  Sparkles,
+  CheckCircle2,
+  Calendar,
+  UserCheck,
 } from 'lucide-react';
+
+interface AssignedAssessmentItem {
+  id: number;
+  studentId: string;
+  studentName: string;
+  grade: string;
+  protocolId: string;
+  protocolTitle: string;
+  domains: string[];
+  questionCount: number;
+  estTime: string;
+  questions: any[];
+  respondentType: string;
+  status: string;
+  dueDate: string | null;
+  instructions: string;
+  assignedBy: string;
+  createdAt: string;
+}
 
 interface TeacherDashboardViewProps {
   user?: UserSession | null;
   onAddConcern: () => void;
+  onStartAssessment?: (studentName: string, protocol: AssessmentProtocol) => void;
   setActiveTab: (tab: ActiveTab) => void;
 }
 
 export const TeacherDashboardView: React.FC<TeacherDashboardViewProps> = ({
   user,
   onAddConcern,
+  onStartAssessment,
   setActiveTab,
 }) => {
   const [classes, setClasses] = useState<any[]>([]);
   const [concerns, setConcerns] = useState<ObservationRecord[]>([]);
+  const [assignedAssessments, setAssignedAssessments] = useState<AssignedAssessmentItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
@@ -32,12 +59,14 @@ export const TeacherDashboardView: React.FC<TeacherDashboardViewProps> = ({
     const fetchDashboardData = async () => {
       setLoading(true);
       try {
-        const [filtersRes, observationsRes] = await Promise.all([
+        const [filtersRes, observationsRes, assignedRes] = await Promise.all([
           fetch('/api/lookups/student-filters', { credentials: 'include' }),
-          fetch('/api/observations?limit=5', { credentials: 'include' })
+          fetch('/api/observations?limit=5', { credentials: 'include' }),
+          fetch('/api/assessments/assigned', { credentials: 'include' }).catch(() => ({ json: () => ({ success: false }) })),
         ]);
         const filtersData = await filtersRes.json();
         const obsData = await observationsRes.json();
+        const assignedData = await assignedRes.json();
 
         if (!cancelled) {
           if (filtersData.success && filtersData.classes) {
@@ -45,6 +74,9 @@ export const TeacherDashboardView: React.FC<TeacherDashboardViewProps> = ({
           }
           if (obsData.success && obsData.observations) {
             setConcerns(obsData.observations);
+          }
+          if (assignedData.success && Array.isArray(assignedData.assessments)) {
+            setAssignedAssessments(assignedData.assessments);
           }
         }
       } catch (err) {
@@ -60,7 +92,26 @@ export const TeacherDashboardView: React.FC<TeacherDashboardViewProps> = ({
     };
   }, []);
 
+  const handleStartAssigned = (item: AssignedAssessmentItem) => {
+    const protocolObj: AssessmentProtocol = {
+      id: item.protocolId,
+      title: item.protocolTitle,
+      description: item.instructions || `Psychologist assigned assessment for ${item.studentName}`,
+      domains: item.domains || ['Emotional Regulation', 'Social Integration'],
+      questionCount: item.questionCount || item.questions?.length || 5,
+      estTime: item.estTime || '10 mins',
+      questions: item.questions || [],
+    };
+
+    if (onStartAssessment) {
+      onStartAssessment(item.studentName, protocolObj);
+    } else {
+      setActiveTab('assessments');
+    }
+  };
+
   const teacherName = user?.name ? user.name.split(' ')[0] : 'Educator';
+
   return (
     <div className="p-6 sm:p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-150">
       {/* Top Header */}
@@ -70,7 +121,7 @@ export const TeacherDashboardView: React.FC<TeacherDashboardViewProps> = ({
             Good Morning, {teacherName}
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 font-medium mt-1">
-            Here is your daily overview of student wellness.
+            Here is your daily overview of student wellness and assigned assessments.
           </p>
         </div>
 
@@ -82,6 +133,81 @@ export const TeacherDashboardView: React.FC<TeacherDashboardViewProps> = ({
           <span>Add Concern</span>
         </button>
       </div>
+
+      {/* HIGHLIGHTED SECTION: Assigned Assessments to Teacher */}
+      {assignedAssessments.length > 0 && (
+        <div className="bg-gradient-to-r from-amber-500/10 via-indigo-500/10 to-blue-500/10 border-2 border-indigo-300/80 rounded-3xl p-6 sm:p-7 shadow-[0_8px_30px_rgba(79,70,229,0.08)] relative overflow-hidden">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+            <div className="flex items-center gap-2.5">
+              <span className="relative flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
+              </span>
+              <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <span>Action Required: Assigned Psychological Assessments</span>
+                <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 border border-indigo-200">
+                  {assignedAssessments.length} Pending
+                </span>
+              </h2>
+            </div>
+            <p className="text-xs text-slate-500">Assigned directly by School Psychologist</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {assignedAssessments.map((item) => (
+              <div
+                key={item.id}
+                className="bg-white rounded-2xl p-5 border border-indigo-100 shadow-xs flex flex-col justify-between space-y-4 hover:shadow-md transition-all"
+              >
+                <div>
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                        <Clock className="w-3 h-3" />
+                        Due {item.dueDate || 'Soon'}
+                      </span>
+                      <h3 className="font-bold text-sm text-slate-900 mt-2">
+                        {item.protocolTitle}
+                      </h3>
+                    </div>
+
+                    <span className="text-xs font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-700 shrink-0">
+                      {item.grade}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 space-y-1 text-xs">
+                    <p className="font-bold text-slate-800">
+                      Student: <span className="text-indigo-600">{item.studentName}</span> ({item.studentId})
+                    </p>
+                    <p className="text-slate-500 text-[11px]">
+                      Assigned by: <span className="font-medium text-slate-700">{item.assignedBy}</span>
+                    </p>
+                    {item.instructions && (
+                      <p className="text-slate-600 italic bg-slate-50 p-2 rounded-lg text-[11px] mt-2 border border-slate-100">
+                        &ldquo;{item.instructions}&rdquo;
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                  <span className="text-[11px] text-slate-400 font-medium">
+                    {item.questionCount} rating items • {item.estTime}
+                  </span>
+                  <button
+                    onClick={() => handleStartAssigned(item)}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                  >
+                    <span>Complete Assessment</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Main 2-Column Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
