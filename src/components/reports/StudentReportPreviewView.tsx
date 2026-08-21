@@ -67,6 +67,7 @@ export const StudentReportPreviewView: React.FC<StudentReportPreviewViewProps> =
   });
   const [liveAssessment, setLiveAssessment] = useState<any>(assessmentResult || null);
   const [liveObsCount, setLiveObsCount] = useState<number>(currentStudent.priorObsCount || 0);
+  const [liveObservations, setLiveObservations] = useState<any[]>([]);
 
   useEffect(() => {
     if (student) {
@@ -104,6 +105,8 @@ export const StudentReportPreviewView: React.FC<StudentReportPreviewViewProps> =
                 year: 'numeric'
               }),
               statusTag: latest.attentionLevel || 'Normal',
+              professionalInterpretation: latest.professionalInterpretation,
+              recommendations: latest.recommendations,
               domains: (latest.domainResults || []).map((dr: any) => ({
                 name: dr.domain?.name || 'Domain',
                 score: Number(dr.score),
@@ -115,6 +118,7 @@ export const StudentReportPreviewView: React.FC<StudentReportPreviewViewProps> =
 
           if (obsData.success && obsData.observations) {
             setLiveObsCount(obsData.observations.length);
+            setLiveObservations(obsData.observations);
           }
         }
       } catch (err) {
@@ -320,22 +324,26 @@ export const StudentReportPreviewView: React.FC<StudentReportPreviewViewProps> =
             </div>
 
             <div className="border border-slate-200 rounded-xl p-4 space-y-3 text-xs bg-white">
-              <div className="space-y-1">
-                <h4 className="font-bold text-blue-950">Academic Engagement</h4>
-                <p className="text-slate-600 leading-relaxed font-normal">
-                  Requires occasional redirection during prolonged independent work. Participates constructively in structured peer activities.
-                </p>
-              </div>
-
-              <hr className="border-slate-100" />
-
-              <div className="space-y-1">
-                <h4 className="font-bold text-blue-950">Social &amp; Emotional Baseline</h4>
-                <p className="text-slate-600 leading-relaxed font-normal">
-                  Peer relationships remain intact. Somatic indicators of test anxiety appear primarily during timed evaluations.
-                </p>
-              </div>
-
+              {liveObservations.length > 0 ? (
+                liveObservations.slice(0, 2).map((obs: any, index: number) => (
+                  <React.Fragment key={obs.id}>
+                    <div className="space-y-1">
+                      <h4 className="font-bold text-blue-950">{obs.concernCategory || 'Observation'} - {obs.date}</h4>
+                      <p className="text-slate-600 leading-relaxed font-normal">
+                        {obs.narrative}
+                      </p>
+                    </div>
+                    {index < Math.min(liveObservations.length, 2) - 1 && <hr className="border-slate-100" />}
+                  </React.Fragment>
+                ))
+              ) : (
+                <div className="space-y-1">
+                  <p className="text-slate-600 leading-relaxed font-normal italic">
+                    No recent verified observations logged for this student.
+                  </p>
+                </div>
+              )}
+              
               <hr className="border-slate-100" />
 
               <div className="space-y-1">
@@ -449,7 +457,7 @@ export const StudentReportPreviewView: React.FC<StudentReportPreviewViewProps> =
                 <h3 className="font-bold text-sm text-slate-900">Clinical Narrative &amp; Diagnosis Notes</h3>
               </div>
               <div className="p-4 bg-slate-50/70 border border-slate-100 rounded-xl text-xs sm:text-sm text-slate-700 leading-relaxed font-normal whitespace-pre-line">
-                {psychologistNotes?.clinicalInterpretation?.trim() ||
+                {liveAssessment?.professionalInterpretation?.trim() || psychologistNotes?.clinicalInterpretation?.trim() ||
                   `Standardized screening results for ${currentStudent.name} indicate domain variability across instructional settings. While general cognitive problem solving remains strong, elevated latency is observed during complex multi-step tasks. Recommendations emphasize proactive classroom chunking, executive functioning aids, and regular wellness check-ins.`}
               </div>
             </div>
@@ -461,9 +469,9 @@ export const StudentReportPreviewView: React.FC<StudentReportPreviewViewProps> =
                 <h3 className="font-bold text-sm text-slate-900">Actionable Accommodations &amp; Strategies</h3>
               </div>
 
-              {psychologistNotes?.recommendations?.trim() ? (
+              {(liveAssessment?.recommendations?.trim() || psychologistNotes?.recommendations?.trim()) ? (
                 <div className="p-4 bg-emerald-50/40 border border-emerald-100 rounded-xl text-xs sm:text-sm text-slate-800 leading-relaxed font-normal whitespace-pre-line">
-                  {psychologistNotes.recommendations}
+                  {liveAssessment?.recommendations?.trim() || psychologistNotes?.recommendations?.trim()}
                 </div>
               ) : (
                 <div className="space-y-3">

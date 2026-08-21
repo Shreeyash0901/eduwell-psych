@@ -26,6 +26,9 @@ export const AssessmentSetupView: React.FC<AssessmentSetupViewProps> = ({
   onCancel,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [respondent, setRespondent] = useState('PSYCHOLOGIST');
+  const [dueDate, setDueDate] = useState('');
+  const [instructions, setInstructions] = useState('');
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(() => {
     if (selectedStudentName) {
       const match = students.find(
@@ -198,6 +201,61 @@ export const AssessmentSetupView: React.FC<AssessmentSetupViewProps> = ({
             No student selected. Search by name or ID above.
           </div>
         )}
+
+        <hr className="border-slate-200/80 my-4" />
+
+        {/* Step 2: Assessment Details */}
+        <div className="mt-8">
+          <div className="flex items-center gap-3">
+            <div className="w-7 h-7 rounded-full bg-blue-700 text-white font-bold flex items-center justify-center text-xs">
+              2
+            </div>
+            <h2 className="text-base font-bold text-slate-900">Assessment Details</h2>
+          </div>
+          <hr className="border-slate-200/80 my-4" />
+          
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="block text-xs font-semibold text-slate-600">
+                Respondent
+              </label>
+              <select 
+                value={respondent}
+                onChange={(e) => setRespondent(e.target.value)}
+                className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all cursor-pointer"
+              >
+                <option value="PSYCHOLOGIST">Psychologist (Administered)</option>
+                <option value="STUDENT">Student (Self-report)</option>
+                <option value="TEACHER">Teacher (Rating scale)</option>
+              </select>
+            </div>
+            
+            <div className="space-y-1.5">
+              <label className="block text-xs font-semibold text-slate-600">
+                Due Date
+              </label>
+              <input 
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all"
+              />
+            </div>
+
+            <div className="space-y-1.5 sm:col-span-2">
+              <label className="block text-xs font-semibold text-slate-600">
+                Instructions (Optional)
+              </label>
+              <textarea 
+                value={instructions}
+                onChange={(e) => setInstructions(e.target.value)}
+                placeholder="Enter any specific instructions for this assessment..."
+                rows={3}
+                className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all resize-none"
+              />
+            </div>
+          </div>
+        </div>
 
         <hr className="border-slate-200/80 my-4" />
 

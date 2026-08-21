@@ -316,9 +316,10 @@ model StudentObservation {
   createdAt          DateTime @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
 
-  school    School  @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  submitter User    @relation("ObservationSubmittedBy", fields: [submittedBy], references: [id], onDelete: Restrict)
+  school             School              @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  student            Student             @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  submitter          User                @relation("ObservationSubmittedBy", fields: [submittedBy], references: [id], onDelete: Restrict)
+  studentAssessments StudentAssessment[]
 
   @@unique([schoolId, recordNumber])
   @@index([schoolId])
@@ -453,6 +454,10 @@ model StudentAssessment {
   assessmentTemplateId       Int       @map("assessment_template_id")
   startedAt                  DateTime? @map("started_at") @db.Timestamp(6)
   completedAt                DateTime? @map("completed_at") @db.Timestamp(6)
+  dueDate                    DateTime? @map("due_date") @db.Date
+  respondentType             String?   @map("respondent_type") @db.VarChar(50)
+  instructions               String?   @db.Text
+  observationId              Int?      @map("observation_id")
   status                     String    @default("DRAFT") @db.VarChar(30) // DRAFT, IN_PROGRESS, COMPLETED, REVIEWED
   overallScore               Decimal?  @map("overall_score") @db.Decimal(5, 2)
   attentionLevel             String?   @map("attention_level") @db.VarChar(50)
@@ -469,6 +474,7 @@ model StudentAssessment {
   assessmentTemplate AssessmentTemplate       @relation(fields: [assessmentTemplateId], references: [id], onDelete: Restrict)
   creator            User                     @relation("AssessmentCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
   reviewer           User?                    @relation("AssessmentReviewedBy", fields: [reviewedBy], references: [id], onDelete: SetNull)
+  observation        StudentObservation?      @relation(fields: [observationId], references: [id], onDelete: SetNull)
   responses          AssessmentResponse[]
   domainResults      AssessmentDomainResult[]
   reports            Report[]
@@ -478,6 +484,7 @@ model StudentAssessment {
   @@index([assessmentTemplateId])
   @@index([createdBy])
   @@index([reviewedBy])
+  @@index([observationId])
   @@map("student_assessments")
 }
 
