@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import { Student, ActiveTab, ObservationRecord, UserSession } from '../../types';
 import {
   Users,
@@ -151,7 +152,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
           <div className="flex items-center gap-3">
             <button
-              onClick={() => alert("Exporting Grade 4, Class B Assessment Report...")}
+              onClick={() => {
+                try {
+                  const headers = ['Student ID', 'Student Name', 'Grade', 'Status'];
+                  const rows = students.map((s) => [s.studentId, s.name, s.grade, s.status || 'Active']);
+                  const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+                  const encodedUri = encodeURI(csvContent);
+                  const link = document.createElement('a');
+                  link.setAttribute('href', encodedUri);
+                  link.setAttribute('download', `EduWell_${selectedClass.replace(/[^a-zA-Z0-9]/g, '_')}_Report.csv`);
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                  toast.success(`Exported ${selectedClass} Report.`);
+                } catch (err) {
+                  toast.error('Failed to export report.');
+                }
+              }}
               className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
             >
               <Download className="w-4 h-4 text-slate-500" />

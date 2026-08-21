@@ -981,7 +981,33 @@ assessmentsRouter.post("/:id/complete", async (req: AuthenticatedRequest, res: R
       else overallAttentionLevel = "OPTIMAL";
     }
 
-    // 3. Update Assessment
+    // 3. Persist and Upsert Domain Results
+    for (const [domainIdStr, data] of Object.entries(domainScores)) {
+      const domainId = Number(domainIdStr);
+      const domainAttention = data.score >= 12 ? "ATTENTION_REQUIRED" : data.score >= 8 ? "MONITOR" : "OPTIMAL";
+      await prisma.studentAssessmentDomainResult.upsert({
+        where: {
+          studentAssessmentId_domainId: {
+            studentAssessmentId: assessment.id,
+            domainId,
+          },
+        },
+        update: {
+          score: new Prisma.Decimal(data.score),
+          maxScore: new Prisma.Decimal(data.maxScore || 100),
+          attentionLevel: domainAttention,
+        },
+        create: {
+          studentAssessmentId: assessment.id,
+          domainId,
+          score: new Prisma.Decimal(data.score),
+          maxScore: new Prisma.Decimal(data.maxScore || 100),
+          attentionLevel: domainAttention,
+        },
+      });
+    }
+
+    // 4. Update Assessment
     const updated = await prisma.studentAssessment.update({
       where: { id: assessment.id },
       data: {
