@@ -431,6 +431,7 @@ authRouter.post("/invitation/accept", async (req: Request, res: Response) => {
     const { token, fullName, password } = req.body;
 
     if (!token || !fullName || !password) {
+      console.warn("[AUTH] /invitation/accept missing fields:", { hasToken: Boolean(token), hasName: Boolean(fullName), hasPass: Boolean(password) });
       return res.status(400).json({ success: false, error: "Token, full name, and password are required." });
     }
 
@@ -439,12 +440,21 @@ authRouter.post("/invitation/accept", async (req: Request, res: Response) => {
     }
 
     const invitation = await prisma.staffInvitation.findUnique({
-      where: { token },
+      where: { token: String(token).trim() },
       include: { school: true },
     });
 
-    if (!invitation || invitation.status !== "PENDING" || invitation.expiresAt < new Date()) {
-      return res.status(400).json({ success: false, error: "Invalid, expired, or already used invitation token." });
+    if (!invitation) {
+      console.warn("[AUTH] /invitation/accept token not found in database:", token);
+      return res.status(400).json({ success: false, error: "Invitation token not found." });
+    }
+
+    if (invitation.status === "EXPIRED" || invitation.expiresAt < new Date()) {
+      return res.status(400).json({ success: false, error: "This invitation link has expired." });
+    }
+
+    if (invitation.status === "REVOKED") {
+      return res.status(400).json({ success: false, error: "This invitation link was revoked." });
     }
 
     const passwordHash = await bcrypt.hash(String(password), 10);

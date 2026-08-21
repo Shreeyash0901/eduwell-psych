@@ -54,10 +54,13 @@ export const AcceptInviteView: React.FC<AcceptInviteViewProps> = ({ onSuccess })
     const urlParams = new URLSearchParams(window.location.search);
     const hashParams = new URLSearchParams(hash.includes('?') ? hash.split('?')[1] : '');
 
-    const extractedToken =
-      urlParams.get('token') ||
-      hashParams.get('token') ||
-      hash.replace(/^#\/?join\/?(\?token=)?/, '').replace(/^#\/?invite\/?(\?token=)?/, '');
+    let extractedToken = urlParams.get('token') || hashParams.get('token');
+    if (!extractedToken) {
+      const match = hash.match(/token=([^&]+)/) || hash.match(/#\/?join\/([^?&]+)/) || hash.match(/#\/?invite\/([^?&]+)/);
+      if (match) {
+        extractedToken = match[1];
+      }
+    }
 
     if (!extractedToken || extractedToken.startsWith('#') || extractedToken.length < 5) {
       setVerifyError('No invitation token detected. Please check the link sent by your Principal.');
