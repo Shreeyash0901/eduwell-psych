@@ -104,7 +104,12 @@ export const AssessmentRunnerView: React.FC<AssessmentRunnerViewProps> = ({
 
   const handleSelectOption = (optionId: number) => {
     if (currentQuestion) {
-      setAnswers((prev) => ({ ...prev, [currentQuestion.id]: optionId }));
+      const qKey = currentQuestion.id !== undefined ? String(currentQuestion.id) : String(currentIndex);
+      setAnswers((prev) => ({
+        ...prev,
+        [qKey as any]: optionId,
+        [currentQuestion.id]: optionId,
+      }));
     }
   };
 
@@ -123,7 +128,10 @@ export const AssessmentRunnerView: React.FC<AssessmentRunnerViewProps> = ({
     }
     
     // Validate all required questions answered
-    const unanswered = protocol.questions.filter(q => !answers[q.id]);
+    const unanswered = protocol.questions.filter((q, idx) => {
+      const qKey = q.id !== undefined ? String(q.id) : String(idx);
+      return answers[qKey as any] === undefined && answers[q.id] === undefined;
+    });
     if (unanswered.length > 0) {
       toast.error(`Please answer all questions. Missing ${unanswered.length} response(s).`);
       return;
@@ -132,10 +140,14 @@ export const AssessmentRunnerView: React.FC<AssessmentRunnerViewProps> = ({
     setIsSubmitting(true);
     try {
       // 1. Submit responses
-      const responsesData = Object.entries(answers).map(([qId, oId]) => ({
-        questionId: Number(qId),
-        selectedOptionId: oId,
-      }));
+      const responsesData = protocol.questions.map((q, idx) => {
+        const qKey = q.id !== undefined ? String(q.id) : String(idx);
+        const chosenOptId = answers[qKey as any] !== undefined ? answers[qKey as any] : answers[q.id];
+        return {
+          questionId: Number(q.id) || (idx + 1),
+          selectedOptionId: chosenOptId,
+        };
+      });
       
       const res1 = await fetch(`/api/assessments/${assessmentId}/responses`, {
         method: 'PUT',
@@ -187,13 +199,25 @@ export const AssessmentRunnerView: React.FC<AssessmentRunnerViewProps> = ({
   }
 
   // Fallback options if none provided from API
-  const displayOptions = currentQuestion.options || [
-    { id: 1, text: 'Never', score: 1 },
-    { id: 2, text: 'Rarely', score: 2 },
-    { id: 3, text: 'Sometimes', score: 3 },
-    { id: 4, text: 'Often', score: 4 },
-    { id: 5, text: 'Always', score: 5 },
-  ];
+  const displayOptions = (currentQuestion.options && currentQuestion.options.length > 0)
+    ? currentQuestion.options.map((opt: any, idx: number) => ({
+        id: opt.id !== undefined && opt.id !== null ? opt.id : (idx + 1),
+        label: opt.label || opt.text || `Option ${idx + 1}`,
+        score: opt.score !== undefined ? Number(opt.score) : (idx + 1),
+      }))
+    : [
+        { id: 1, label: 'Never', score: 1 },
+        { id: 2, label: 'Rarely', score: 2 },
+        { id: 3, label: 'Sometimes', score: 3 },
+        { id: 4, label: 'Often', score: 4 },
+        { id: 5, label: 'Always', score: 5 },
+      ];
+
+  const currentQKey = currentQuestion.id !== undefined ? String(currentQuestion.id) : String(currentIndex);
+
+  const selectedOptId = answers[currentQKey as any] !== undefined 
+    ? answers[currentQKey as any] 
+    : (currentQuestion.id ? answers[currentQuestion.id] : undefined);
 
   return (
     <div className="p-8 max-w-4xl mx-auto space-y-6">
@@ -254,14 +278,15 @@ export const AssessmentRunnerView: React.FC<AssessmentRunnerViewProps> = ({
         {/* Answer Options Radio List */}
         <div className="space-y-3 max-w-xl mx-auto">
           {displayOptions.map((opt) => {
-            const isSelected = answers[currentQuestion.id] === opt.id;
+            const isSelected = selectedOptId === opt.id;
             return (
               <button
                 key={opt.id}
+                type="button"
                 onClick={() => handleSelectOption(opt.id)}
-                className={`w-full p-4 rounded-xl border text-left font-semibold text-sm transition-all duration-150 flex items-center gap-4 ${
+                className={`w-full p-4 rounded-xl border text-left font-semibold text-sm transition-all duration-150 flex items-center gap-4 cursor-pointer ${
                   isSelected
-                    ? 'border-blue-600 bg-blue-50/50 text-blue-900 ring-2 ring-blue-600/20'
+                    ? 'border-blue-600 bg-blue-50/70 text-blue-900 ring-2 ring-blue-600/30'
                     : 'border-slate-200 hover:border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
                 }`}
               >
