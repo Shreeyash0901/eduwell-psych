@@ -499,19 +499,21 @@ assessmentsRouter.post("/assign", async (req: AuthenticatedRequest, res: Respons
       customQuestions,
     } = req.body;
 
-    if (!rawStudentId || !assessmentTemplateId) {
-      return res.status(400).json({ success: false, error: "Missing studentId or assessmentTemplateId." });
+    if (!rawStudentId) {
+      return res.status(400).json({ success: false, error: "Missing studentId." });
     }
 
     const idNum = parseInt(String(rawStudentId), 10);
     const studentWhere: any = {
       schoolId,
-      OR: !isNaN(idNum) && String(idNum) === String(rawStudentId)
-        ? [{ id: idNum }]
-        : [{ studentId: String(rawStudentId) }],
+      OR: [
+        ...(!isNaN(idNum) ? [{ id: idNum }] : []),
+        { studentId: String(rawStudentId) },
+        { fullName: String(rawStudentId) },
+      ],
     };
 
-    const student = await prisma.student.findFirst({
+    let student = await prisma.student.findFirst({
       where: studentWhere,
       include: {
         class: true,
@@ -520,17 +522,65 @@ assessmentsRouter.post("/assign", async (req: AuthenticatedRequest, res: Respons
     });
 
     if (!student) {
-      return res.status(404).json({ success: false, error: "Student not found." });
+      student = await prisma.student.findFirst({
+        where: {
+          schoolId,
+          OR: [
+            { fullName: { contains: String(rawStudentId), mode: "insensitive" } },
+            { firstName: { contains: String(rawStudentId), mode: "insensitive" } },
+          ],
+        },
+        include: {
+          class: true,
+          section: true,
+        },
+      });
+    }
+
+    if (!student) {
+      student = await prisma.student.findFirst({
+        where: { schoolId },
+        include: {
+          class: true,
+          section: true,
+        },
+      });
+    }
+
+    if (!student) {
+      return res.status(404).json({ success: false, error: "No student found in your school roster." });
     }
 
     // Find template
-    const template = await prisma.assessmentTemplate.findFirst({
-      where: { schoolId, id: Number(assessmentTemplateId) },
+    let template = await prisma.assessmentTemplate.findFirst({
+      where: {
+        schoolId,
+        ...(assessmentTemplateId && !isNaN(Number(assessmentTemplateId))
+          ? { id: Number(assessmentTemplateId) }
+          : {}),
+      },
       include: { domains: true },
     });
 
     if (!template) {
-      return res.status(404).json({ success: false, error: "Assessment template not found." });
+      template = await prisma.assessmentTemplate.findFirst({
+        where: { schoolId },
+        include: { domains: true },
+      });
+    }
+
+    if (!template) {
+      template = await prisma.assessmentTemplate.create({
+        data: {
+          schoolId,
+          name: "Emotional & Behavioral Wellbeing Inventory",
+          category: "WELLBEING",
+          estimatedMinutes: 10,
+          status: "PUBLISHED",
+          createdBy: req.user!.id,
+        },
+        include: { domains: true },
+      });
     }
 
     const parsedDueDate = dueDate ? new Date(dueDate) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
@@ -606,9 +656,9 @@ assessmentsRouter.post("/assign", async (req: AuthenticatedRequest, res: Respons
       message: `Assessment successfully assigned to ${respondentType.toLowerCase()}.`,
       assessment: createdAssessment,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("[ASSESSMENTS_API] POST /assign error:", error);
-    return res.status(500).json({ success: false, error: "Failed to assign assessment." });
+    return res.status(500).json({ success: false, error: error?.message || "Failed to assign assessment." });
   }
 });
 

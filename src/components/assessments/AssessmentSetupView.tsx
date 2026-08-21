@@ -151,7 +151,7 @@ export const AssessmentSetupView: React.FC<AssessmentSetupViewProps> = ({
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          studentId: selectedStudent.id || selectedStudent.studentId,
+          studentId: selectedStudent.id || selectedStudent.studentId || selectedStudent.name,
           assessmentTemplateId: defaultProtocol.id || '1',
           respondentType: respondent,
           dueDate,
@@ -160,14 +160,21 @@ export const AssessmentSetupView: React.FC<AssessmentSetupViewProps> = ({
         }),
       });
 
-      const data = await res.json();
-      if (data.success) {
+      let data: any = {};
+      try {
+        const text = await res.text();
+        data = text ? JSON.parse(text) : {};
+      } catch (parseErr) {
+        console.error('Failed to parse assign response:', parseErr);
+      }
+
+      if (res.ok && data.success) {
         toast.success(
-          `Assessment assigned to ${respondent.toLowerCase()} successfully! Due by ${dueDate}.`
+          `Assessment assigned to ${respondent.toLowerCase()} successfully! Due by ${dueDate || "scheduled date"}.`
         );
         setActiveTab('assessments');
       } else {
-        toast.error(data.error || 'Failed to assign assessment.');
+        toast.error(data.error || `Failed to assign assessment (Status: ${res.status}).`);
       }
     } catch (err: any) {
       toast.error(err.message || 'Network error while assigning assessment.');
