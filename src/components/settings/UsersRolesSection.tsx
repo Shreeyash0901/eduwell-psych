@@ -220,7 +220,7 @@ export const UsersRolesSection: React.FC = () => {
   if (loadError) {
     return (
       <SectionCard title="Users & Roles">
-        <SectionError message={loadError} onRetry={loadUsers} />
+        <SectionError message={loadError} onRetry={loadUsersAndClasses} />
       </SectionCard>
     );
   }

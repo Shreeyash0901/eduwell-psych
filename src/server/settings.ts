@@ -244,6 +244,7 @@ settingsRouter.get("/users", requireRole("ADMIN"), async (req: AuthenticatedRequ
         email: true,
         role: true,
         status: true,
+        createdAt: true,
         teacherClassAccesses: {
           select: { class: { select: { id: true, name: true } } },
         },
@@ -261,7 +262,7 @@ settingsRouter.get("/users", requireRole("ADMIN"), async (req: AuthenticatedRequ
         email: u.email,
         role: u.role,
         status: u.status,
-        createdAt: u.createdAt.toISOString(),
+        createdAt: u.createdAt ? u.createdAt.toISOString() : new Date().toISOString(),
         classIds: u.teacherClassAccesses.map((a) => a.class.id),
         classAccess: u.teacherClassAccesses.map((a) => a.class.name),
         sectionIds: u.teacherSectionAccesses.map((a) => a.section.id),
