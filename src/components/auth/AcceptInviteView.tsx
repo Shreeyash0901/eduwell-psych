@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   GraduationCap,
   HeartHandshake,
+  LogIn,
 } from 'lucide-react';
 import { Button } from '../ui/Button';
 
@@ -47,6 +48,15 @@ export const AcceptInviteView: React.FC<AcceptInviteViewProps> = ({ onSuccess })
   const [confirmPassword, setConfirmPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+
+  // Welcome Onboard Screen State
+  const [isSuccessOnboard, setIsSuccessOnboard] = useState<boolean>(false);
+  const [createdUserData, setCreatedUserData] = useState<{
+    name: string;
+    email: string;
+    role: string;
+    schoolName: string;
+  } | null>(null);
 
   useEffect(() => {
     // Extract token from URL hash or query string
@@ -128,19 +138,13 @@ export const AcceptInviteView: React.FC<AcceptInviteViewProps> = ({ onSuccess })
       const data = await res.json();
       if (res.ok && data.success) {
         toast.success(data.message || 'Account activated successfully!');
-        await checkSession();
-        // Clear join hash parameter and navigate to appropriate dashboard
-        window.history.replaceState(null, '', window.location.pathname);
-        if (data.user?.role?.toLowerCase() === 'teacher') {
-          window.location.hash = '#teacher_dashboard';
-        } else {
-          window.location.hash = '#dashboard';
-        }
-        if (onSuccess) {
-          onSuccess();
-        } else {
-          window.location.reload();
-        }
+        setCreatedUserData({
+          name: data.user?.name || fullName.trim(),
+          email: data.user?.email || invite?.email || '',
+          role: data.user?.role || invite?.role || 'TEACHER',
+          schoolName: invite?.schoolName || 'EduWell Psych School',
+        });
+        setIsSuccessOnboard(true);
       } else {
         toast.error(data.error || 'Failed to complete signup.');
       }
@@ -149,6 +153,13 @@ export const AcceptInviteView: React.FC<AcceptInviteViewProps> = ({ onSuccess })
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleProceedToLogin = async () => {
+    await checkSession();
+    // Redirect to login view or dashboard
+    window.location.hash = '#login';
+    window.location.reload();
   };
 
   const getRoleBadge = (role: string) => {
@@ -186,6 +197,60 @@ export const AcceptInviteView: React.FC<AcceptInviteViewProps> = ({ onSuccess })
         <div className="text-center space-y-3">
           <div className="w-10 h-10 border-3 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
           <p className="text-sm font-semibold text-slate-600">Verifying your staff invitation...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Welcome Onboard Screen ──
+  if (isSuccessOnboard && createdUserData) {
+    const roleMeta = getRoleBadge(createdUserData.role);
+    const RoleIcon = roleMeta.icon;
+
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 flex items-center justify-center p-4 sm:p-6">
+        <div className="bg-white border border-slate-200 rounded-3xl shadow-2xl max-w-lg w-full p-8 text-center space-y-6 animate-in zoom-in-95 duration-300">
+          <div className="w-16 h-16 rounded-3xl bg-emerald-50 border-2 border-emerald-200 text-emerald-600 flex items-center justify-center mx-auto shadow-md">
+            <CheckCircle2 className="w-8 h-8 text-emerald-600 animate-in zoom-in-75 duration-300" />
+          </div>
+
+          <div className="space-y-2">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 text-xs font-bold">
+              <Sparkles className="w-3.5 h-3.5" />
+              Welcome On Board!
+            </div>
+            <h2 className="text-2xl font-black text-slate-900 tracking-tight">Account Created Successfully</h2>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
+              Welcome to EduWell Psych, <span className="font-bold text-slate-800">{createdUserData.name}</span>. Your {createdUserData.role.toLowerCase()} account has been activated for <span className="font-bold text-slate-800">{createdUserData.schoolName}</span>.
+            </p>
+          </div>
+
+          {/* Credentials Summary Box */}
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-left space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500">Your Role</span>
+              <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full border ${roleMeta.color}`}>
+                <RoleIcon className="w-3 h-3" />
+                {roleMeta.label}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500">Sign In Email</span>
+              <span className="text-xs font-mono font-bold text-slate-900">{createdUserData.email}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500">School Workspace</span>
+              <span className="text-xs font-bold text-slate-900">{createdUserData.schoolName}</span>
+            </div>
+          </div>
+
+          <button
+            onClick={handleProceedToLogin}
+            className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer"
+          >
+            <span>Proceed to Login Page</span>
+            <LogIn className="w-4 h-4" />
+          </button>
         </div>
       </div>
     );

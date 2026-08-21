@@ -302,59 +302,56 @@ settingsRouter.post("/users/invite", requireRole("ADMIN"), async (req: Authentic
       return res.status(400).json({ success: false, error: "Invalid role specified." });
     }
 
-    // Check if email already exists in this school
+    // Check if email already exists globally in the system
     const existing = await prisma.user.findFirst({
-      where: { schoolId, email: trimmedEmail },
+      where: {
+        email: {
+          equals: trimmedEmail,
+          mode: "insensitive",
+        },
+      },
     });
 
     if (existing) {
       return res.status(409).json({
         success: false,
-        error: `A user with email "${trimmedEmail}" already exists in your school roster.`,
+        error: `User with email "${trimmedEmail}" already exists in the system.`,
       });
     }
 
-    // Generate secure invitation token valid for 7 days
-    const inviteToken = "inv_" + crypto.randomBytes(24).toString("hex");
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-
-    const invitation = await prisma.staffInvitation.create({
-      data: {
-        token: inviteToken,
-        schoolId,
+    // Check if an active invitation already exists for this email
+    const existingPendingInvite = await prisma.staffInvitation.findFirst({
+      where: {
         email: trimmedEmail,
-        role: formattedRole as any,
-        invitedBy: req.user!.id,
-        expiresAt,
+        schoolId,
         status: "PENDING",
+        expiresAt: { gt: new Date() },
       },
     });
 
-    const rawPassword = tempPassword && String(tempPassword).length >= 6
-      ? String(tempPassword)
-      : "EduWell@" + Math.random().toString(36).slice(-6);
+    let inviteToken: string;
+    let expiresAt: Date;
 
-    const passwordHash = await bcrypt.hash(rawPassword, 10);
+    if (existingPendingInvite) {
+      inviteToken = existingPendingInvite.token;
+      expiresAt = existingPendingInvite.expiresAt;
+    } else {
+      // Generate secure invitation token valid for 7 days
+      inviteToken = "inv_" + crypto.randomBytes(24).toString("hex");
+      expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-    // Create active or pending user account
-    const newUser = await prisma.user.create({
-      data: {
-        schoolId,
-        name: trimmedName,
-        email: trimmedEmail,
-        role: formattedRole as any,
-        status: "ACTIVE",
-        passwordHash,
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        status: true,
-        createdAt: true,
-      },
-    });
+      await prisma.staffInvitation.create({
+        data: {
+          token: inviteToken,
+          schoolId,
+          email: trimmedEmail,
+          role: formattedRole as any,
+          invitedBy: req.user!.id,
+          expiresAt,
+          status: "PENDING",
+        },
+      });
+    }
 
     // Record in audit log
     try {
@@ -363,23 +360,18 @@ settingsRouter.post("/users/invite", requireRole("ADMIN"), async (req: Authentic
           targetSchoolId: schoolId,
           actorUserId: req.user!.id,
           action: "USER_INVITE",
-          targetType: "USER",
-          targetId: newUser.id,
+          targetType: "STAFF_INVITATION",
+          targetId: 0,
           outcome: "SUCCESS",
           metadata: {
-            invitedName: newUser.name,
-            invitedEmail: newUser.email,
-            role: newUser.role,
-            invitationToken: inviteToken,
+            invitedName: trimmedName,
+            invitedEmail: trimmedEmail,
+            invitedRole: formattedRole,
+            token: inviteToken,
           },
         },
       });
-    } catch (auditErr) {}
-
-    const school = await prisma.school.findUnique({
-      where: { id: schoolId },
-      select: { name: true, code: true },
-    });
+    } catch (_) {}
 
     return res.status(201).json({
       success: true,
