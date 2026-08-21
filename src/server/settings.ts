@@ -16,6 +16,7 @@
 
 import { Router, Response } from "express";
 import bcrypt from "bcryptjs";
+import crypto from "node:crypto";
 import { prisma } from "../lib/db";
 import { requireAuth, AuthenticatedRequest } from "./middleware/auth";
 import { requireRole } from "./middleware/role";
