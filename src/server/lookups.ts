@@ -96,3 +96,49 @@ lookupsRouter.get("/student-filters", async (req: AuthenticatedRequest, res: Res
     });
   }
 });
+
+/**
+ * GET /api/lookups/teachers
+ * Retrieve list of active teachers for assessment assignment.
+ */
+lookupsRouter.get("/teachers", async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const schoolId = req.user!.schoolId;
+    const teachers = await prisma.user.findMany({
+      where: {
+        schoolId,
+        role: "TEACHER",
+        status: "ACTIVE",
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        teacherClassAccesses: {
+          select: {
+            class: { select: { id: true, name: true } },
+          },
+        },
+        teacherSectionAccesses: {
+          select: {
+            section: { select: { id: true, name: true } },
+          },
+        },
+      },
+      orderBy: { name: "asc" },
+    });
+
+    const formattedTeachers = teachers.map((t) => ({
+      id: t.id,
+      name: t.name,
+      email: t.email,
+      classes: t.teacherClassAccesses.map((c) => c.class.name),
+      sections: t.teacherSectionAccesses.map((s) => s.section.name),
+    }));
+
+    return res.json({ success: true, teachers: formattedTeachers });
+  } catch (error) {
+    console.error("[LOOKUPS_API] GET /api/lookups/teachers error:", error);
+    return res.status(500).json({ success: false, error: "Failed to load teachers lookup." });
+  }
+});

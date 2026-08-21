@@ -32,6 +32,7 @@ interface AssignedAssessmentItem {
   estTime: string;
   questions: any[];
   respondentType: string;
+  assignedToTeacher?: string;
   status: string;
   dueDate: string | null;
   instructions: string;
@@ -183,10 +184,18 @@ export const AssessmentsView: React.FC<AssessmentsViewProps> = ({
                     {item.protocolTitle}
                   </h3>
 
-                  <div className="mt-2 text-xs space-y-1">
+                  <div className="mt-2 text-xs space-y-1.5">
                     <p className="font-semibold text-slate-800">
                       Student: <span className="text-blue-700">{item.studentName}</span> ({item.studentId})
                     </p>
+                    
+                    {item.respondentType === 'TEACHER' && (
+                      <div className="flex items-center gap-1 text-[11px] text-indigo-900 bg-indigo-50/70 border border-indigo-100 px-2 py-1 rounded-lg">
+                        <span className="font-bold text-indigo-700">Teacher:</span>
+                        <span className="font-medium truncate">{item.assignedToTeacher || 'Class Teacher'}</span>
+                      </div>
+                    )}
+
                     <p className="text-[11px] text-slate-400">
                       Assigned by: <span className="font-medium text-slate-600">{item.assignedBy}</span>
                     </p>

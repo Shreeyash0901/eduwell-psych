@@ -29,6 +29,7 @@ interface AssignedAssessmentItem {
   estTime: string;
   questions: any[];
   respondentType: string;
+  assignedToTeacher?: string;
   status: string;
   dueDate: string | null;
   instructions: string;
@@ -176,10 +177,15 @@ export const TeacherDashboardView: React.FC<TeacherDashboardViewProps> = ({
                     </span>
                   </div>
 
-                  <div className="mt-3 space-y-1 text-xs">
+                  <div className="mt-3 space-y-1.5 text-xs">
                     <p className="font-bold text-slate-800">
                       Student: <span className="text-indigo-600">{item.studentName}</span> ({item.studentId})
                     </p>
+                    {item.assignedToTeacher && (
+                      <p className="text-[11px] font-semibold text-indigo-700 bg-indigo-50/80 px-2 py-0.5 rounded border border-indigo-100/70 inline-block">
+                        Assigned to: <span className="font-bold">{item.assignedToTeacher}</span>
+                      </p>
+                    )}
                     <p className="text-slate-500 text-[11px]">
                       Assigned by: <span className="font-medium text-slate-700">{item.assignedBy}</span>
                     </p>

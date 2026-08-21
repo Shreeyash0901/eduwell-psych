@@ -38,6 +38,9 @@ export const AssessmentSetupView: React.FC<AssessmentSetupViewProps> = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [respondent, setRespondent] = useState<'PSYCHOLOGIST' | 'TEACHER' | 'STUDENT' | 'PARENT'>('PSYCHOLOGIST');
+  const [teachers, setTeachers] = useState<any[]>([]);
+  const [targetTeacherId, setTargetTeacherId] = useState<string>('');
+  const [loadingTeachers, setLoadingTeachers] = useState(false);
   const [dueDate, setDueDate] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() + 7);
@@ -48,6 +51,27 @@ export const AssessmentSetupView: React.FC<AssessmentSetupViewProps> = ({
   const [isEditingQuestions, setIsEditingQuestions] = useState(false);
   const [newQuestionText, setNewQuestionText] = useState('');
   const [newQuestionDomain, setNewQuestionDomain] = useState('Emotional Regulation');
+
+  React.useEffect(() => {
+    const fetchTeachers = async () => {
+      setLoadingTeachers(true);
+      try {
+        const res = await fetch('/api/lookups/teachers', { credentials: 'include' });
+        const data = await res.json();
+        if (data.success && data.teachers) {
+          setTeachers(data.teachers);
+          if (data.teachers.length > 0) {
+            setTargetTeacherId(String(data.teachers[0].id));
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load teachers:', err);
+      } finally {
+        setLoadingTeachers(false);
+      }
+    };
+    fetchTeachers();
+  }, []);
 
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(() => {
     if (selectedStudentName) {
@@ -154,6 +178,7 @@ export const AssessmentSetupView: React.FC<AssessmentSetupViewProps> = ({
           studentId: selectedStudent.id || selectedStudent.studentId || selectedStudent.name,
           assessmentTemplateId: defaultProtocol.id || '1',
           respondentType: respondent,
+          targetUserId: respondent === 'TEACHER' && targetTeacherId ? Number(targetTeacherId) : undefined,
           dueDate,
           instructions,
           customQuestions: questions,
@@ -329,6 +354,30 @@ export const AssessmentSetupView: React.FC<AssessmentSetupViewProps> = ({
                 <option value="PARENT">Parent (Observer Scale)</option>
               </select>
             </div>
+
+            {/* If Teacher is selected, allow picking specific educator */}
+            {respondent === 'TEACHER' && (
+              <div className="space-y-1.5 animate-in fade-in duration-150">
+                <label className="block text-xs font-semibold text-slate-600 flex items-center justify-between">
+                  <span>Assign to Specific Teacher</span>
+                  <span className="text-[10px] text-blue-600 font-bold">
+                    {teachers.length} Teachers in School
+                  </span>
+                </label>
+                <select
+                  value={targetTeacherId}
+                  onChange={(e) => setTargetTeacherId(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-blue-50/40 border border-blue-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 transition-all cursor-pointer"
+                >
+                  <option value="">All Class Teachers / Any Teacher</option>
+                  {teachers.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name} ({t.classes.length > 0 ? t.classes.join(', ') : 'All Classes'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <div className="space-y-1.5">
               <label className="block text-xs font-semibold text-slate-600">

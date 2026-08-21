@@ -496,6 +496,7 @@ assessmentsRouter.post("/assign", async (req: AuthenticatedRequest, res: Respons
       dueDate,
       instructions,
       observationId,
+      targetUserId,
       customQuestions,
     } = req.body;
 
@@ -596,6 +597,7 @@ assessmentsRouter.post("/assign", async (req: AuthenticatedRequest, res: Respons
         instructions: instructions ? String(instructions) : null,
         observationId: observationId ? Number(observationId) : null,
         createdBy: req.user!.id,
+        reviewedBy: targetUserId ? Number(targetUserId) : null,
       },
       include: {
         student: {
@@ -605,6 +607,9 @@ assessmentsRouter.post("/assign", async (req: AuthenticatedRequest, res: Respons
           select: { id: true, name: true, category: true, estimatedMinutes: true },
         },
         creator: {
+          select: { id: true, name: true, role: true },
+        },
+        reviewer: {
           select: { id: true, name: true, role: true },
         },
       },
@@ -716,37 +721,68 @@ assessmentsRouter.get("/assigned", async (req: AuthenticatedRequest, res: Respon
         creator: {
           select: { id: true, name: true, role: true },
         },
+        reviewer: {
+          select: { id: true, name: true, role: true },
+        },
       },
       orderBy: { createdAt: "desc" },
     });
 
-    const formatted = assignedList.map((a) => ({
-      id: a.id,
-      studentId: a.student.studentId,
-      studentName:
-        a.student.fullName ||
-        [a.student.firstName, a.student.lastName].filter(Boolean).join(" ") ||
-        a.student.studentId,
-      grade: a.student.class?.name || "Grade",
-      section: a.student.section?.name || "",
-      protocolId: String(a.assessmentTemplate.id),
-      protocolTitle: a.assessmentTemplate.name,
-      domains: a.assessmentTemplate.domains.map((d) => d.name),
-      questionCount: a.assessmentTemplate.questions.length,
-      estTime: `${a.assessmentTemplate.estimatedMinutes || 10} mins`,
-      questions: a.assessmentTemplate.questions.map((q) => ({
-        id: q.id,
-        text: q.questionText,
-        domain: a.assessmentTemplate.domains.find((d) => d.id === q.domainId)?.name || "General",
-        options: q.options.map((o) => ({ label: o.label, score: Number(o.score) })),
-      })),
-      respondentType: a.respondentType || "TEACHER",
-      status: a.status,
-      dueDate: a.dueDate ? a.dueDate.toISOString().split("T")[0] : null,
-      instructions: a.instructions || "",
-      assignedBy: a.creator.name,
-      createdAt: a.createdAt.toISOString(),
-    }));
+    // Also fetch class assigned teachers for each student
+    const classIds = Array.from(new Set(assignedList.map(a => a.student.class?.name).filter(Boolean)));
+    const teachersList = await prisma.user.findMany({
+      where: { schoolId, role: "TEACHER", status: "ACTIVE" },
+      select: {
+        id: true,
+        name: true,
+        teacherClassAccesses: { select: { classId: true } },
+      },
+    });
+
+    const formatted = assignedList.map((a) => {
+      // If a specific reviewer is saved, use that teacher name.
+      // Otherwise find teachers assigned to this student's class.
+      let targetTeacherNames = a.reviewer ? a.reviewer.name : "";
+      if (!targetTeacherNames) {
+        const studentTeachers = teachersList.filter((t) =>
+          a.student.class && t.teacherClassAccesses.some((ca) => (a.student as any).classId === ca.classId)
+        );
+        if (studentTeachers.length > 0) {
+          targetTeacherNames = studentTeachers.map((t) => t.name).join(", ");
+        } else {
+          targetTeacherNames = "Class Teacher / All Teachers";
+        }
+      }
+
+      return {
+        id: a.id,
+        studentId: a.student.studentId,
+        studentName:
+          a.student.fullName ||
+          [a.student.firstName, a.student.lastName].filter(Boolean).join(" ") ||
+          a.student.studentId,
+        grade: a.student.class?.name || "Grade",
+        section: a.student.section?.name || "",
+        protocolId: String(a.assessmentTemplate.id),
+        protocolTitle: a.assessmentTemplate.name,
+        domains: a.assessmentTemplate.domains.map((d) => d.name),
+        questionCount: a.assessmentTemplate.questions.length,
+        estTime: `${a.assessmentTemplate.estimatedMinutes || 10} mins`,
+        questions: a.assessmentTemplate.questions.map((q) => ({
+          id: q.id,
+          text: q.questionText,
+          domain: a.assessmentTemplate.domains.find((d) => d.id === q.domainId)?.name || "General",
+          options: q.options.map((o) => ({ label: o.label, score: Number(o.score) })),
+        })),
+        respondentType: a.respondentType || "TEACHER",
+        assignedToTeacher: targetTeacherNames,
+        status: a.status,
+        dueDate: a.dueDate ? a.dueDate.toISOString().split("T")[0] : null,
+        instructions: a.instructions || "",
+        assignedBy: a.creator.name,
+        createdAt: a.createdAt.toISOString(),
+      };
+    });
 
     return res.json({ success: true, assessments: formatted });
   } catch (error) {
