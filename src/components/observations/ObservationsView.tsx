@@ -16,6 +16,7 @@ interface ObservationsViewProps {
   onSelectObservation: (obs: ObservationRecord) => void;
   onOpenNewNote: () => void;
   setActiveTab: (tab: ActiveTab) => void;
+  searchQuery?: string;
 }
 
 export const ObservationsView: React.FC<ObservationsViewProps> = ({
@@ -23,6 +24,7 @@ export const ObservationsView: React.FC<ObservationsViewProps> = ({
   onSelectObservation,
   onOpenNewNote,
   setActiveTab,
+  searchQuery = '',
 }) => {
   const [sourceFilter, setSourceFilter] = useState<string>('All Sources');
   const [categoryFilter, setCategoryFilter] = useState<string>('All Categories');
@@ -45,6 +47,7 @@ export const ObservationsView: React.FC<ObservationsViewProps> = ({
       if (sourceFilter !== 'All Sources') params.set('source', sourceFilter);
       if (categoryFilter !== 'All Categories') params.set('category', categoryFilter);
       if (gradeFilter !== 'All Grades') params.set('grade', gradeFilter);
+      if (searchQuery.trim()) params.set('search', searchQuery.trim());
       params.set('page', String(page));
       params.set('limit', String(pageSize));
 
@@ -64,7 +67,7 @@ export const ObservationsView: React.FC<ObservationsViewProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [sourceFilter, categoryFilter, gradeFilter, page, pageSize]);
+  }, [sourceFilter, categoryFilter, gradeFilter, searchQuery, page, pageSize]);
 
   useEffect(() => {
     loadObservations();

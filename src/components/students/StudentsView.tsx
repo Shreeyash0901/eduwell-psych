@@ -27,6 +27,7 @@ interface StudentsViewProps {
   onAddStudent?: (s: Student) => void;
   userRole?: UserRole;
   setActiveTab: (tab: ActiveTab) => void;
+  searchQuery?: string;
 }
 
 export const StudentsView: React.FC<StudentsViewProps> = ({
@@ -35,6 +36,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
   onAddStudent,
   userRole,
   setActiveTab,
+  searchQuery,
 }) => {
   // Roster and Pagination State
   const [students, setStudents] = useState<Student[]>([]);
@@ -48,12 +50,19 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   // Search & Filter State
-  const [search, setSearch] = useState<string>('');
-  const [debouncedSearch, setDebouncedSearch] = useState<string>('');
+  const [search, setSearch] = useState<string>(searchQuery || '');
+  const [debouncedSearch, setDebouncedSearch] = useState<string>(searchQuery || '');
   const [selectedClassId, setSelectedClassId] = useState<string>('all');
   const [selectedSectionId, setSelectedSectionId] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [page, setPage] = useState<number>(1);
+
+  // Sync searchQuery prop if provided
+  useEffect(() => {
+    if (searchQuery !== undefined) {
+      setSearch(searchQuery);
+    }
+  }, [searchQuery]);
 
   // Filter Lookups
   const [lookups, setLookups] = useState<StudentFilterLookups>({

@@ -423,6 +423,17 @@ function MainApplication() {
           user={currentUser}
           onSignOut={handleSignOut}
           onNavigateTab={setActiveTab}
+          onOpenStudentProfile={(s) => {
+            setSelectedProfileStudent(s);
+            setSelectedProfileStudentId(s.id);
+            window.location.hash = `#student_profile?id=${s.id}`;
+            setActiveTab('student_profile');
+          }}
+          onSelectObservation={(obs) => {
+            setSelectedObservationId(obs.id);
+            window.location.hash = '#observation_detail';
+            setActiveTab('observation_detail');
+          }}
           onOpenHelp={() =>
             alert(
               'EduWell Psych Professional Suite Help:\n- Dashboard: Aggregate cohort overview\n- Teacher Dashboard: Daily student overview & rapid concern logging\n- Observations: Review and triage teacher/parent reports\n- Assessments: Conduct structured standardized screenings\n- Reports: District and grade-level analytics'
@@ -464,6 +475,7 @@ function MainApplication() {
               onSelectObservation={handleSelectObservation}
               onOpenNewNote={() => setIsNewObservationOpen(true)}
               setActiveTab={setActiveTab}
+              searchQuery={searchQuery}
             />
           )}
 
@@ -638,6 +650,7 @@ function MainApplication() {
                 setActiveTab('student_profile');
               }}
               setActiveTab={setActiveTab}
+              searchQuery={searchQuery}
             />
           )}
 
