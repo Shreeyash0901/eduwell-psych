@@ -18,6 +18,7 @@ import { ParentFeedbackView } from './components/parent-feedback/ParentFeedbackV
 import { PsychologistInterpretationView } from './components/assessments/PsychologistInterpretationView';
 import { AssessmentSetupView } from './components/assessments/AssessmentSetupView';
 import { LoginView } from './components/auth/LoginView';
+import { AcceptInviteView } from './components/auth/AcceptInviteView';
 import { NewObservationModal } from './components/observations/NewObservationModal';
 import { NewAssessmentModal } from './components/assessments/NewAssessmentModal';
 import { SuperAdminDashboard } from './components/super-admin/SuperAdminDashboard';
@@ -59,6 +60,7 @@ const getTabFromPath = (): ActiveTab => {
 
   const path = hash || paramTab || lastSegment;
 
+  if (path === 'join' || path === 'accept_invite' || path === 'invite' || path === 'accept-invite') return 'accept_invite';
   if (path === 'login' || path === 'auth' || path === 'signin') return 'login';
   if (path === 'students') return 'students';
   if (
@@ -395,6 +397,11 @@ function MainApplication() {
         </div>
       </div>
     );
+  }
+
+  // Accept Staff Invitation View
+  if (activeTab === 'accept_invite') {
+    return <AcceptInviteView onSuccess={() => setActiveTab('dashboard')} />;
   }
 
   // Unauthenticated or Login view

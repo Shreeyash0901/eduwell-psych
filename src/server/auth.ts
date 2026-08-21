@@ -364,3 +364,145 @@ authRouter.post("/logout", (_req: Request, res: Response) => {
     message: "Logged out successfully.",
   });
 });
+
+/**
+ * GET /api/auth/invitation/verify?token=...
+ * Validates an invite token and returns school & role details
+ */
+authRouter.get("/invitation/verify", async (req: Request, res: Response) => {
+  try {
+    const token = String(req.query.token || "");
+    if (!token) {
+      return res.status(400).json({ success: false, error: "Invitation token is required." });
+    }
+
+    const invitation = await prisma.staffInvitation.findUnique({
+      where: { token },
+      include: {
+        school: { select: { id: true, name: true, code: true, logoUrl: true } },
+        inviter: { select: { name: true, role: true } },
+      },
+    });
+
+    if (!invitation) {
+      return res.status(404).json({ success: false, error: "Invalid or expired invitation link." });
+    }
+
+    if (invitation.status === "EXPIRED" || invitation.expiresAt < new Date()) {
+      return res.status(410).json({ success: false, error: "This invitation link has expired. Please contact your principal for a new link." });
+    }
+
+    if (invitation.status === "REVOKED") {
+      return res.status(403).json({ success: false, error: "This invitation link was revoked." });
+    }
+
+    // Check if user already activated
+    const existingUser = await prisma.user.findFirst({
+      where: { schoolId: invitation.schoolId, email: invitation.email },
+      select: { id: true, name: true, email: true },
+    });
+
+    return res.json({
+      success: true,
+      invitation: {
+        token: invitation.token,
+        email: invitation.email,
+        role: invitation.role,
+        schoolName: invitation.school.name,
+        schoolCode: invitation.school.code,
+        invitedBy: invitation.inviter.name,
+        expiresAt: invitation.expiresAt.toISOString(),
+        isExistingUser: Boolean(existingUser),
+        defaultName: existingUser?.name || "",
+      },
+    });
+  } catch (error) {
+    console.error("[AUTH] /invitation/verify error:", error);
+    return res.status(500).json({ success: false, error: "Failed to verify invitation." });
+  }
+});
+
+/**
+ * POST /api/auth/invitation/accept
+ * Staff member completes details and sets password to activate account
+ */
+authRouter.post("/invitation/accept", async (req: Request, res: Response) => {
+  try {
+    const { token, fullName, password } = req.body;
+
+    if (!token || !fullName || !password) {
+      return res.status(400).json({ success: false, error: "Token, full name, and password are required." });
+    }
+
+    if (String(password).length < 6) {
+      return res.status(400).json({ success: false, error: "Password must be at least 6 characters long." });
+    }
+
+    const invitation = await prisma.staffInvitation.findUnique({
+      where: { token },
+      include: { school: true },
+    });
+
+    if (!invitation || invitation.status !== "PENDING" || invitation.expiresAt < new Date()) {
+      return res.status(400).json({ success: false, error: "Invalid, expired, or already used invitation token." });
+    }
+
+    const passwordHash = await bcrypt.hash(String(password), 10);
+    const trimmedName = String(fullName).trim().slice(0, 100);
+
+    // Upsert or update User
+    const user = await prisma.user.upsert({
+      where: { email: invitation.email },
+      update: {
+        name: trimmedName,
+        passwordHash,
+        status: "ACTIVE",
+        role: invitation.role as any,
+        schoolId: invitation.schoolId,
+      },
+      create: {
+        schoolId: invitation.schoolId,
+        name: trimmedName,
+        email: invitation.email,
+        passwordHash,
+        role: invitation.role as any,
+        status: "ACTIVE",
+      },
+      include: {
+        school: { select: { name: true } },
+      },
+    });
+
+    // Mark invitation as accepted
+    await prisma.staffInvitation.update({
+      where: { id: invitation.id },
+      data: {
+        status: "ACCEPTED",
+        acceptedAt: new Date(),
+      },
+    });
+
+    // Generate login token and set cookie immediately
+    const jwtToken = jwt.sign(
+      {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        schoolId: user.schoolId,
+      },
+      serverConfig.jwtSecret,
+      { expiresIn: "7d" }
+    );
+
+    res.cookie(serverConfig.cookieName, jwtToken, getCookieOptions());
+
+    return res.status(200).json({
+      success: true,
+      message: `Welcome to EduWell Psych, ${user.name}! Your account is now active.`,
+      user: toSafeUser(user),
+    });
+  } catch (error: any) {
+    console.error("[AUTH] /invitation/accept error:", error);
+    return res.status(500).json({ success: false, error: error?.message || "Failed to accept invitation." });
+  }
+});

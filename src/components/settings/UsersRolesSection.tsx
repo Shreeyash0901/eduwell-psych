@@ -38,8 +38,15 @@ export const UsersRolesSection: React.FC = () => {
   const [inviteRole, setInviteRole] = useState<'TEACHER' | 'PSYCHOLOGIST' | 'ADMIN'>('TEACHER');
   const [invitePassword, setInvitePassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [invitedSuccessInfo, setInvitedSuccessInfo] = useState<{ email: string; tempPass: string } | null>(null);
+  const [invitedSuccessInfo, setInvitedSuccessInfo] = useState<{
+    email: string;
+    tempPass?: string;
+    inviteLink?: string;
+    role?: string;
+    name?: string;
+  } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
 
   const loadUsers = useCallback(async () => {
     if (!isAdmin) {
@@ -102,14 +109,18 @@ export const UsersRolesSection: React.FC = () => {
 
       if (res.ok && data.success) {
         toast.success(data.message || 'Staff member invited successfully!');
-        if (data.user?.temporaryPassword) {
-          setInvitedSuccessInfo({
-            email: data.user.email,
-            tempPass: data.user.temporaryPassword,
-          });
-        } else {
-          setIsInviteOpen(false);
-        }
+        const fullInviteUrl = data.inviteLink
+          ? `${window.location.origin}/#join?token=${data.inviteToken}`
+          : undefined;
+
+        setInvitedSuccessInfo({
+          email: data.user?.email || inviteEmail.trim(),
+          tempPass: data.user?.temporaryPassword,
+          inviteLink: fullInviteUrl,
+          name: data.user?.name || inviteName.trim(),
+          role: data.user?.role || inviteRole,
+        });
+
         setInviteName('');
         setInviteEmail('');
         setInvitePassword('');
@@ -260,15 +271,54 @@ export const UsersRolesSection: React.FC = () => {
             </div>
 
             {invitedSuccessInfo ? (
-              <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl space-y-3">
+              <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-4">
                 <div className="flex items-center gap-2 text-emerald-800 font-bold text-sm">
                   <Check className="w-4 h-4 text-emerald-600" />
-                  User Created & Credentials Generated
+                  Invitation Created for {invitedSuccessInfo.name} ({invitedSuccessInfo.role})
                 </div>
-                <div className="space-y-1.5 text-xs text-slate-700 bg-white p-3 rounded-lg border border-emerald-100">
+
+                {/* Direct Invitation Link for Teacher/Psychologist Signup */}
+                {invitedSuccessInfo.inviteLink && (
+                  <div className="space-y-1.5 bg-white p-3.5 rounded-xl border border-emerald-200 shadow-2xs">
+                    <label className="block text-[11px] font-bold text-slate-700">
+                      🔗 Invitation Signup Link (Send via Email):
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        readOnly
+                        value={invitedSuccessInfo.inviteLink}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-mono text-blue-700 truncate"
+                      />
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => {
+                          navigator.clipboard.writeText(invitedSuccessInfo.inviteLink!);
+                          setCopiedLink(true);
+                          toast.success('Invitation link copied! Email this to the staff member.');
+                          setTimeout(() => setCopiedLink(false), 2500);
+                        }}
+                      >
+                        {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                        {copiedLink ? 'Copied' : 'Copy'}
+                      </Button>
+                    </div>
+                    <p className="text-[10px] text-slate-500 font-medium">
+                      When the educator opens this link, they will enter their details, choose their password, and sign in directly.
+                    </p>
+                  </div>
+                )}
+
+                {/* Direct Credentials info */}
+                <div className="space-y-1.5 text-xs text-slate-700 bg-white p-3.5 rounded-xl border border-emerald-100">
                   <p><span className="font-semibold text-slate-500">Email:</span> {invitedSuccessInfo.email}</p>
-                  <p><span className="font-semibold text-slate-500">Temporary Password:</span> <code className="bg-slate-100 px-1.5 py-0.5 rounded font-mono font-bold text-slate-900">{invitedSuccessInfo.tempPass}</code></p>
+                  {invitedSuccessInfo.tempPass && (
+                    <p><span className="font-semibold text-slate-500">Temporary Password:</span> <code className="bg-slate-100 px-1.5 py-0.5 rounded font-mono font-bold text-slate-900">{invitedSuccessInfo.tempPass}</code></p>
+                  )}
                 </div>
+
                 <div className="flex gap-2 pt-1">
                   <Button
                     type="button"
@@ -278,7 +328,7 @@ export const UsersRolesSection: React.FC = () => {
                     onClick={copyCredentials}
                   >
                     {copied ? <Check className="w-3.5 h-3.5 mr-1 text-emerald-600" /> : <Copy className="w-3.5 h-3.5 mr-1" />}
-                    {copied ? 'Copied' : 'Copy Credentials'}
+                    {copied ? 'Copied' : 'Copy All Details'}
                   </Button>
                   <Button
                     type="button"

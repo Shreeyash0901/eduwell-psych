@@ -1,5 +1,6 @@
 export type ActiveTab =
   | 'login'
+  | 'accept_invite'
   | 'dashboard'
   | 'teacher_dashboard'
   | 'students'

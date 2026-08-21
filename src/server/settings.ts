@@ -313,12 +313,29 @@ settingsRouter.post("/users/invite", requireRole("ADMIN"), async (req: Authentic
       });
     }
 
+    // Generate secure invitation token valid for 7 days
+    const inviteToken = "inv_" + crypto.randomBytes(24).toString("hex");
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    const invitation = await prisma.staffInvitation.create({
+      data: {
+        token: inviteToken,
+        schoolId,
+        email: trimmedEmail,
+        role: formattedRole as any,
+        invitedBy: req.user!.id,
+        expiresAt,
+        status: "PENDING",
+      },
+    });
+
     const rawPassword = tempPassword && String(tempPassword).length >= 6
       ? String(tempPassword)
       : "EduWell@" + Math.random().toString(36).slice(-6);
 
     const passwordHash = await bcrypt.hash(rawPassword, 10);
 
+    // Create active or pending user account
     const newUser = await prisma.user.create({
       data: {
         schoolId,
@@ -352,14 +369,23 @@ settingsRouter.post("/users/invite", requireRole("ADMIN"), async (req: Authentic
             invitedName: newUser.name,
             invitedEmail: newUser.email,
             role: newUser.role,
+            invitationToken: inviteToken,
           },
         },
       });
     } catch (auditErr) {}
 
+    const school = await prisma.school.findUnique({
+      where: { id: schoolId },
+      select: { name: true, code: true },
+    });
+
     return res.status(201).json({
       success: true,
-      message: `User ${newUser.name} (${newUser.role}) successfully invited!`,
+      message: `Invitation generated for ${newUser.name} (${newUser.role})!`,
+      inviteLink: `/join?token=${inviteToken}`,
+      inviteToken,
+      schoolName: school?.name || "EduWell School",
       user: {
         ...newUser,
         createdAt: newUser.createdAt.toISOString(),

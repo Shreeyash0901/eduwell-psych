@@ -49,6 +49,7 @@ model School {
   notifications       Notification[]
   schoolSettings      SchoolSettings?
   systemAuditLogs     SystemAuditLog[]
+  staffInvitations    StaffInvitation[]
 
   @@map("schools")
 }
@@ -126,6 +127,7 @@ model User {
   schoolApiAuditLogs     SchoolApiAuditLog[]
   notifications          Notification[]
   systemAuditLogs        SystemAuditLog[]
+  staffInvitationsSent   StaffInvitation[]      @relation("InvitationSentBy")
 
   @@index([schoolId])
   @@map("users")
@@ -720,4 +722,29 @@ model SystemAuditLog {
   @@index([targetSchoolId])
   @@index([createdAt])
   @@map("system_audit_logs")
+}
+
+// ============================================================
+// 27. staff_invitations — Principal-to-Staff Invite Tokens
+// ============================================================
+
+model StaffInvitation {
+  id             Int       @id @default(autoincrement())
+  token          String    @unique @db.VarChar(100)
+  schoolId       Int       @map("school_id")
+  email          String    @db.VarChar(255)
+  role           String    @default("TEACHER") @db.VarChar(30)
+  status         String    @default("PENDING") @db.VarChar(20) // PENDING, ACCEPTED, EXPIRED, REVOKED
+  invitedBy      Int       @map("invited_by")
+  invitedAt      DateTime  @default(now()) @map("invited_at") @db.Timestamp(6)
+  expiresAt      DateTime  @map("expires_at") @db.Timestamp(6)
+  acceptedAt     DateTime? @map("accepted_at") @db.Timestamp(6)
+
+  school  School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  inviter User   @relation("InvitationSentBy", fields: [invitedBy], references: [id], onDelete: Restrict)
+
+  @@index([schoolId])
+  @@index([token])
+  @@index([email])
+  @@map("staff_invitations")
 }
