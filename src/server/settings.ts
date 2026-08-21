@@ -15,6 +15,7 @@
 //   - schoolId / code / status are never accepted from the request body.
 
 import { Router, Response } from "express";
+import bcrypt from "bcryptjs";
 import { prisma } from "../lib/db";
 import { requireAuth, AuthenticatedRequest } from "./middleware/auth";
 import { requireRole } from "./middleware/role";
@@ -271,6 +272,106 @@ settingsRouter.get("/users", requireRole("ADMIN"), async (req: AuthenticatedRequ
   } catch (error) {
     console.error("[SETTINGS] GET /users error:", error);
     return res.status(500).json({ success: false, error: "Failed to load users." });
+  }
+});
+
+/**
+ * POST /api/settings/users/invite
+ * Invites / creates a new user for the authenticated school (ADMIN only).
+ */
+settingsRouter.post("/users/invite", requireRole("ADMIN"), async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const schoolId = req.user!.schoolId;
+    if (!schoolId) {
+      return res.status(400).json({ success: false, error: "School context missing." });
+    }
+
+    const { name, email, role = "TEACHER", tempPassword } = req.body;
+
+    const trimmedName = safeString(name, 100);
+    const trimmedEmail = safeString(email, 150)?.toLowerCase();
+    const validRoles = ["ADMIN", "PSYCHOLOGIST", "TEACHER"];
+    const formattedRole = String(role).toUpperCase();
+
+    if (!trimmedName || !trimmedEmail) {
+      return res.status(400).json({ success: false, error: "Name and Email are required." });
+    }
+
+    if (!validRoles.includes(formattedRole)) {
+      return res.status(400).json({ success: false, error: "Invalid role specified." });
+    }
+
+    // Check if email already exists in this school
+    const existing = await prisma.user.findFirst({
+      where: { schoolId, email: trimmedEmail },
+    });
+
+    if (existing) {
+      return res.status(409).json({
+        success: false,
+        error: `A user with email "${trimmedEmail}" already exists in your school roster.`,
+      });
+    }
+
+    const rawPassword = tempPassword && String(tempPassword).length >= 6
+      ? String(tempPassword)
+      : "EduWell@" + Math.random().toString(36).slice(-6);
+
+    const passwordHash = await bcrypt.hash(rawPassword, 10);
+
+    const newUser = await prisma.user.create({
+      data: {
+        schoolId,
+        name: trimmedName,
+        email: trimmedEmail,
+        role: formattedRole as any,
+        status: "ACTIVE",
+        passwordHash,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        status: true,
+        createdAt: true,
+      },
+    });
+
+    // Record in audit log
+    try {
+      await prisma.systemAuditLog.create({
+        data: {
+          schoolId,
+          targetSchoolId: schoolId,
+          actorUserId: req.user!.id,
+          action: "USER_INVITE",
+          targetType: "USER",
+          targetId: newUser.id,
+          outcome: "SUCCESS",
+          metadata: {
+            invitedName: newUser.name,
+            invitedEmail: newUser.email,
+            role: newUser.role,
+          },
+        },
+      });
+    } catch (auditErr) {}
+
+    return res.status(201).json({
+      success: true,
+      message: `User ${newUser.name} (${newUser.role}) successfully invited!`,
+      user: {
+        ...newUser,
+        createdAt: newUser.createdAt.toISOString(),
+        classAccess: [],
+        sectionAccess: [],
+        temporaryPassword: rawPassword,
+      },
+    });
+  } catch (error: any) {
+    console.error("[SETTINGS] POST /users/invite error:", error);
+    return res.status(500).json({ success: false, error: error?.message || "Failed to invite user." });
   }
 });
 
