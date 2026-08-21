@@ -119,7 +119,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <aside
-      className="w-60 flex flex-col justify-between h-screen sticky top-0 shrink-0 select-none sidebar-dark sidebar-scroll overflow-y-auto animate-slide-in-left"
+      className="w-60 flex flex-col justify-between h-screen sticky top-0 shrink-0 select-none bg-white border-r border-slate-200 overflow-y-auto animate-slide-in-left"
       style={{ minHeight: '100vh' }}
     >
       {/* Top section */}
@@ -127,16 +127,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Brand */}
         <div className="px-5 pt-6 pb-5 flex items-center gap-3">
           <div
-            className="w-8 h-8 rounded-xl flex items-center justify-center text-white shrink-0 animate-pulse-glow"
-            style={{ background: 'linear-gradient(135deg, #3b5bdb 0%, #7950f2 100%)', boxShadow: '0 0 16px rgba(59,91,219,0.5)' }}
+            className="w-8 h-8 rounded-xl flex items-center justify-center text-white shrink-0 shadow-sm"
+            style={{ background: 'linear-gradient(135deg, #2563eb 0%, #4f46e5 100%)' }}
           >
             <BrainCircuit className="w-4.5 h-4.5" style={{ width: '18px', height: '18px' }} />
           </div>
           <div>
-            <div className="font-bold text-[15px] text-white tracking-tight leading-none gradient-text-blue" style={{ background: 'linear-gradient(120deg,#a5b4fc,#818cf8)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+            <div className="font-bold text-[15px] text-slate-900 tracking-tight leading-none">
               EduWell Psych
             </div>
-            <div className="text-[10px] font-semibold mt-0.5" style={{ color: 'rgba(255,255,255,0.3)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+            <div className="text-[10px] font-semibold mt-0.5 text-slate-400 tracking-wider uppercase">
               {role === 'super_admin' ? 'Control Plane' : 'Professional Suite'}
             </div>
           </div>
@@ -144,19 +144,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* User card */}
         {user && (
-          <div className="mx-3 mb-3 p-3 rounded-xl flex items-center gap-2.5" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.07)' }}>
+          <div className="mx-3 mb-3 p-3 rounded-xl flex items-center gap-2.5 bg-slate-50 border border-slate-200/80">
             {user.avatarUrl ? (
-              <img src={user.avatarUrl} alt={user.name} className="w-7 h-7 rounded-full object-cover shrink-0 ring-1 ring-white/15" />
+              <img src={user.avatarUrl} alt={user.name} className="w-7 h-7 rounded-full object-cover shrink-0 ring-1 ring-slate-200" />
             ) : (
-              <div className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center text-white text-xs font-bold" style={{ background: 'linear-gradient(135deg,#3b5bdb,#7950f2)' }}>
+              <div className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center text-white text-xs font-bold" style={{ background: 'linear-gradient(135deg,#3b82f6,#6366f1)' }}>
                 {initials}
               </div>
             )}
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-semibold text-white truncate leading-tight">{user.name}</p>
+              <p className="text-xs font-bold text-slate-800 truncate leading-tight">{user.name}</p>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${getRoleDot()}`} />
-                <p className="text-[10px] font-medium truncate" style={{ color: 'rgba(255,255,255,0.4)' }}>{getRoleLabel()}</p>
+                <p className="text-[10px] font-semibold text-slate-500 truncate uppercase">{getRoleLabel()}</p>
               </div>
             </div>
           </div>
@@ -164,11 +164,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Separator label */}
         <div className="px-5 pb-1.5">
-          <span className="text-[9px] font-bold uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.2)' }}>Navigation</span>
+          <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Navigation</span>
         </div>
 
         {/* Nav Items */}
-        <nav className="px-2.5 space-y-0.5">
+        <nav className="px-2.5 space-y-1">
           {navItems.map((item) => {
             const Icon = item.icon;
             const active = isActive(item.id);
@@ -179,13 +179,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 className={`sidebar-nav-item${active ? ' active' : ''}`}
               >
                 <Icon
-                  style={{ width: '16px', height: '16px', flexShrink: 0, color: active ? '#a5b4fc' : 'rgba(255,255,255,0.35)', transition: 'color 120ms' }}
+                  style={{ width: '16px', height: '16px', flexShrink: 0, color: active ? '#2563eb' : '#64748b', transition: 'color 120ms' }}
                 />
                 <span className="flex-1 truncate">{item.label}</span>
                 {item.badge !== undefined && item.badge > 0 && (
                   <span
-                    className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
-                    style={{ background: active ? 'rgba(165,180,252,0.2)' : 'rgba(255,255,255,0.08)', color: active ? '#a5b4fc' : 'rgba(255,255,255,0.5)', minWidth: '20px', textAlign: 'center' }}
+                    className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                      active ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'
+                    }`}
+                    style={{ minWidth: '20px', textAlign: 'center' }}
                   >
                     {item.badge}
                   </span>
@@ -197,16 +199,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Bottom Section */}
-      <div className="p-2.5 space-y-0.5" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+      <div className="p-2.5 space-y-1 border-t border-slate-100">
         {/* Upgrade prompt — only for non super_admin */}
         {role !== 'super_admin' && (
-          <div className="mb-2 p-3 rounded-xl" style={{ background: 'linear-gradient(135deg, rgba(59,91,219,0.25), rgba(121,80,242,0.2))', border: '1px solid rgba(92,124,250,0.25)' }}>
-            <div className="flex items-center gap-2 mb-1">
-              <Sparkles style={{ width: '12px', height: '12px', color: '#a5b4fc', flexShrink: 0 }} />
-              <span className="text-[11px] font-bold text-white">EduWell Pro</span>
+          <div className="mb-2 p-3 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50/60 border border-blue-100">
+            <div className="flex items-center gap-1.5 mb-1">
+              <Sparkles style={{ width: '13px', height: '13px', color: '#3b82f6', flexShrink: 0 }} />
+              <span className="text-[11px] font-bold text-slate-900">EduWell Pro</span>
             </div>
-            <p className="text-[10px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.4)' }}>Advanced analytics, custom reports & priority support.</p>
-            <button className="mt-2 text-[10px] font-bold text-white px-2.5 py-1 rounded-lg w-full text-center" style={{ background: 'linear-gradient(135deg,#3b5bdb,#7950f2)' }}>
+            <p className="text-[10px] text-slate-500 leading-relaxed">Advanced analytics, custom reports & priority support.</p>
+            <button className="mt-2 text-[10px] font-bold text-white px-2.5 py-1.5 rounded-lg w-full text-center bg-blue-600 hover:bg-blue-700 shadow-xs transition-colors cursor-pointer">
               Upgrade Plan
             </button>
           </div>
@@ -216,20 +218,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
           onClick={() => alert('EduWell Support:\n• docs.eduwellpsych.org\n• support@eduwellpsych.org')}
           className="sidebar-nav-item"
         >
-          <HelpCircle style={{ width: '16px', height: '16px', flexShrink: 0, color: 'rgba(255,255,255,0.3)' }} />
+          <HelpCircle style={{ width: '16px', height: '16px', flexShrink: 0, color: '#64748b' }} />
           <span>Help Center</span>
         </button>
 
         <button
           onClick={handleSignOut}
           disabled={isSigningOut}
-          className="sidebar-nav-item"
-          style={{ color: isSigningOut ? 'rgba(255,255,255,0.3)' : 'rgba(248,113,113,0.75)' }}
-          onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.08)')}
-          onMouseLeave={e => (e.currentTarget.style.background = '')}
+          className="sidebar-nav-item text-rose-600 hover:bg-rose-50"
         >
-          <LogOut style={{ width: '16px', height: '16px', flexShrink: 0, color: isSigningOut ? 'rgba(255,255,255,0.2)' : 'rgba(248,113,113,0.7)' }} />
-          <span>{isSigningOut ? 'Signing out…' : 'Sign Out'}</span>
+          <LogOut style={{ width: '16px', height: '16px', flexShrink: 0, color: '#e11d48' }} />
+          <span className="font-semibold">{isSigningOut ? 'Signing out…' : 'Sign Out'}</span>
         </button>
       </div>
     </aside>
