@@ -15,6 +15,7 @@ import {
   CheckCircle2,
   Calendar,
   UserCheck,
+  Building2,
 } from 'lucide-react';
 
 interface AssignedAssessmentItem {
