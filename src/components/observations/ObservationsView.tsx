@@ -166,14 +166,14 @@ export const ObservationsView: React.FC<ObservationsViewProps> = ({
       </div>
 
       {/* Filter Options Panel */}
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-4 bg-white border border-slate-200/80 rounded-xl p-4 shadow-xs">
-        <div className="md:col-span-8 grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-5 bg-white border border-slate-200/60 rounded-2xl p-5 shadow-sm">
+        <div className="md:col-span-8 grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
             <label className="block text-xs font-semibold text-slate-600 mb-1">Source</label>
             <select
               value={sourceFilter}
               onChange={(e) => setSourceFilter(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-medium text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:bg-white"
+              className="w-full bg-white border border-slate-200/70 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800 shadow-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all cursor-pointer"
             >
               <option value="All Sources">All Sources</option>
               <option value="Teacher">Teacher</option>
@@ -187,7 +187,7 @@ export const ObservationsView: React.FC<ObservationsViewProps> = ({
             <select
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-medium text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:bg-white"
+              className="w-full bg-white border border-slate-200/70 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800 shadow-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all cursor-pointer"
             >
               <option value="All Categories">All Categories</option>
               <option value="Social/Emotional">Social/Emotional</option>
@@ -202,7 +202,7 @@ export const ObservationsView: React.FC<ObservationsViewProps> = ({
             <select
               value={gradeFilter}
               onChange={(e) => setGradeFilter(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-medium text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:bg-white"
+              className="w-full bg-white border border-slate-200/70 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800 shadow-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all cursor-pointer"
             >
               <option value="All Grades">All Grades</option>
               <option value="4B">4B</option>
@@ -221,7 +221,7 @@ export const ObservationsView: React.FC<ObservationsViewProps> = ({
               value={dateFilter}
               onChange={(e) => setDateFilter(e.target.value)}
               placeholder="e.g. Oct 24, 2023"
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-3 pr-9 py-2 text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:bg-white"
+              className="w-full bg-white border border-slate-200/70 rounded-xl pl-3.5 pr-9 py-2 text-xs font-semibold text-slate-800 placeholder:text-slate-400 shadow-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
             />
             <Calendar className="w-4 h-4 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2" />
           </div>
@@ -229,7 +229,7 @@ export const ObservationsView: React.FC<ObservationsViewProps> = ({
       </div>
 
       {/* Observations Queue Table */}
-      <div className="bg-white border border-slate-200/80 rounded-xl overflow-hidden shadow-xs">
+      <div className="bg-white border border-slate-200/60 rounded-3xl overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
         {error && (
           <div className="p-3 bg-red-50 border-b border-red-200 text-xs text-red-700 flex items-center gap-2">
             <AlertCircle className="w-4 h-4 shrink-0" />
@@ -238,7 +238,7 @@ export const ObservationsView: React.FC<ObservationsViewProps> = ({
         )}
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50/80 text-xs font-bold text-slate-700 uppercase tracking-wider border-b border-slate-200/80">
+            <thead className="bg-slate-50/50 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200/60">
               <tr>
                 <th className="px-6 py-3.5">Student</th>
                 <th className="px-6 py-3.5">Class</th>
@@ -267,7 +267,7 @@ export const ObservationsView: React.FC<ObservationsViewProps> = ({
                 </tr>
               ) : (
                 displayedObservations.map((obs) => (
-                  <tr key={obs.id} className="hover:bg-slate-50/50 transition-colors">
+                  <tr key={obs.id} className="hover:bg-slate-50/80 transition-colors border-b border-slate-100 last:border-0">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div
@@ -294,7 +294,7 @@ export const ObservationsView: React.FC<ObservationsViewProps> = ({
                     <td className="px-6 py-4 text-slate-500 font-medium">{obs.date}</td>
                     <td className="px-6 py-4">
                       <span
-                        className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-semibold ${getStatusBadgeClass(
+                        className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold shadow-sm ${getStatusBadgeClass(
                           obs.status
                         )}`}
                       >
@@ -304,7 +304,7 @@ export const ObservationsView: React.FC<ObservationsViewProps> = ({
                     <td className="px-6 py-4 text-right">
                       <button
                         onClick={() => onSelectObservation(obs)}
-                        className="p-1.5 text-blue-700 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-colors inline-flex items-center justify-center"
+                        className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 border border-transparent hover:border-blue-100 rounded-xl transition-all inline-flex items-center justify-center shadow-xs cursor-pointer"
                         title="View Observation Detail"
                       >
                         <Eye className="w-4 h-4" />
@@ -318,7 +318,7 @@ export const ObservationsView: React.FC<ObservationsViewProps> = ({
         </div>
 
         {/* Table Pagination Bar */}
-        <div className="px-6 py-4 border-t border-slate-200/80 flex items-center justify-between text-xs text-slate-500 font-medium">
+        <div className="px-6 py-4 bg-slate-50/50 border-t border-slate-200/60 flex items-center justify-between text-xs text-slate-500 font-medium">
           <span>
             {total === 0
               ? 'No entries'

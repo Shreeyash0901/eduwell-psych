@@ -200,6 +200,9 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   const [schoolSearch, setSchoolSearch] = useState('');
   const [schoolStatusFilter, setSchoolStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE' | 'ATTENTION'>('ALL');
   const [isSchoolsLoading, setIsSchoolsLoading] = useState(false);
+  const [schoolsPage, setSchoolsPage] = useState(1);
+  const [schoolsPagination, setSchoolsPagination] = useState({ total: 0, totalPages: 1 });
+  const schoolsLimit = 10;
 
   // School detail modal / drawer state
   const [selectedSchoolId, setSelectedSchoolId] = useState<number | null>(null);
@@ -222,6 +225,9 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   const [isAuditLoading, setIsAuditLoading] = useState(false);
   const [auditSchoolFilter, setAuditSchoolFilter] = useState<string>('');
   const [auditOutcomeFilter, setAuditOutcomeFilter] = useState<'ALL' | 'SUCCESS' | 'FAILURE'>('ALL');
+  const [auditPage, setAuditPage] = useState(1);
+  const [auditPagination, setAuditPagination] = useState({ total: 0, totalPages: 1 });
+  const auditLimit = 50;
 
   // Form states for creating a school
   const [createForm, setCreateForm] = useState({
@@ -276,17 +282,23 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       if (schoolStatusFilter !== 'ALL' && schoolStatusFilter !== 'ATTENTION') {
         params.set('status', schoolStatusFilter);
       }
-      params.set('take', '50');
+      params.set('take', schoolsLimit.toString());
+      params.set('skip', ((schoolsPage - 1) * schoolsLimit).toString());
+
       const res = await API.get(`/schools?${params.toString()}`);
       if (res.success) {
         setSchools(res.schools);
+        setSchoolsPagination({
+          total: res.totalCount || res.schools.length,
+          totalPages: Math.ceil((res.totalCount || res.schools.length) / schoolsLimit) || 1
+        });
       }
     } catch (err) {
       console.error('Failed to load schools', err);
     } finally {
       setIsSchoolsLoading(false);
     }
-  }, [schoolSearch, searchQuery, schoolStatusFilter]);
+  }, [schoolSearch, searchQuery, schoolStatusFilter, schoolsPage]);
 
   // Fetch school detail
   const loadSchoolDetail = async (id: number) => {
@@ -313,17 +325,23 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       const params = new URLSearchParams();
       if (auditSchoolFilter) params.set('targetSchoolId', auditSchoolFilter);
       if (auditOutcomeFilter !== 'ALL') params.set('outcome', auditOutcomeFilter);
-      params.set('take', '50');
+      params.set('take', auditLimit.toString());
+      params.set('skip', ((auditPage - 1) * auditLimit).toString());
+      
       const res = await API.get(`/audit-logs?${params.toString()}`);
       if (res.success) {
         setAuditLogs(res.logs);
+        setAuditPagination({
+          total: res.totalCount || res.logs.length,
+          totalPages: Math.ceil((res.totalCount || res.logs.length) / auditLimit) || 1
+        });
       }
     } catch (err) {
       console.error('Failed to load audit logs', err);
     } finally {
       setIsAuditLoading(false);
     }
-  }, [auditSchoolFilter, auditOutcomeFilter]);
+  }, [auditSchoolFilter, auditOutcomeFilter, auditPage]);
 
   useEffect(() => {
     loadMetrics();
@@ -1079,6 +1097,34 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                 </tbody>
               </table>
             </div>
+
+            {/* Pagination for Schools */}
+            {schoolsPagination.totalPages > 1 && (
+              <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <span className="text-xs text-slate-500 font-medium text-center sm:text-left">
+                  Showing {(schoolsPage - 1) * schoolsLimit + 1} to {Math.min(schoolsPage * schoolsLimit, schoolsPagination.total)} of {schoolsPagination.total} institutions
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    disabled={schoolsPage === 1}
+                    onClick={() => setSchoolsPage((p) => Math.max(1, p - 1))}
+                    className="p-1.5 rounded-md text-slate-600 hover:bg-slate-200 disabled:opacity-50 transition-colors cursor-pointer"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <span className="text-xs font-semibold text-slate-700 bg-white px-3 py-1 rounded-md border border-slate-200">
+                    Page {schoolsPage} of {schoolsPagination.totalPages}
+                  </span>
+                  <button
+                    disabled={schoolsPage === schoolsPagination.totalPages}
+                    onClick={() => setSchoolsPage((p) => Math.min(schoolsPagination.totalPages, p + 1))}
+                    className="p-1.5 rounded-md text-slate-600 hover:bg-slate-200 disabled:opacity-50 transition-colors cursor-pointer"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1216,6 +1262,34 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                 </tbody>
               </table>
             </div>
+
+            {/* Pagination for Audit Logs */}
+            {auditPagination.totalPages > 1 && (
+              <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <span className="text-xs text-slate-500 font-medium text-center sm:text-left">
+                  Showing {(auditPage - 1) * auditLimit + 1} to {Math.min(auditPage * auditLimit, auditPagination.total)} of {auditPagination.total} logs
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    disabled={auditPage === 1}
+                    onClick={() => setAuditPage((p) => Math.max(1, p - 1))}
+                    className="p-1.5 rounded-md text-slate-600 hover:bg-slate-200 disabled:opacity-50 transition-colors cursor-pointer"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <span className="text-xs font-semibold text-slate-700 bg-white px-3 py-1 rounded-md border border-slate-200">
+                    Page {auditPage} of {auditPagination.totalPages}
+                  </span>
+                  <button
+                    disabled={auditPage === auditPagination.totalPages}
+                    onClick={() => setAuditPage((p) => Math.min(auditPagination.totalPages, p + 1))}
+                    className="p-1.5 rounded-md text-slate-600 hover:bg-slate-200 disabled:opacity-50 transition-colors cursor-pointer"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

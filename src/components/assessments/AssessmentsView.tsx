@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AssessmentProtocol, ActiveTab } from '../../types';
-import { Smile, Brain, Target, Play, Plus, Sliders } from 'lucide-react';
+import { Smile, Brain, Target, Play, Plus, Sliders, ChevronLeft, ChevronRight } from 'lucide-react';
 import { TemplateBuilderModal } from './TemplateBuilderModal';
 
 interface AssessmentsViewProps {
@@ -17,6 +17,10 @@ export const AssessmentsView: React.FC<AssessmentsViewProps> = ({
   onRefreshProtocols,
 }) => {
   const [isBuilderOpen, setIsBuilderOpen] = useState(false);
+  const [page, setPage] = useState(1);
+  const limit = 6;
+  const totalPages = Math.ceil(protocols.length / limit) || 1;
+  const paginatedProtocols = protocols.slice((page - 1) * limit, page * limit);
 
   const getProtocolIcon = (id: string) => {
     switch (id) {
@@ -63,7 +67,7 @@ export const AssessmentsView: React.FC<AssessmentsViewProps> = ({
 
       {/* Protocol Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
-        {protocols.map((protocol) => (
+        {paginatedProtocols.map((protocol) => (
           <div
             key={protocol.id}
             className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col justify-between hover:shadow-lg hover:border-slate-300 transition-all duration-300"
@@ -116,6 +120,34 @@ export const AssessmentsView: React.FC<AssessmentsViewProps> = ({
           </div>
         ))}
       </div>
+
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between bg-white border border-slate-200 rounded-xl px-6 py-4 shadow-sm mt-6">
+          <span className="text-xs text-slate-500 font-medium">
+            Showing {(page - 1) * limit + 1} to {Math.min(page * limit, protocols.length)} of {protocols.length} protocols
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              disabled={page === 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              className="p-1.5 rounded-md text-slate-600 hover:bg-slate-200 disabled:opacity-50 transition-colors cursor-pointer"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span className="text-xs font-semibold text-slate-700 bg-slate-50 px-3 py-1 rounded-md border border-slate-200">
+              Page {page} of {totalPages}
+            </span>
+            <button
+              disabled={page === totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              className="p-1.5 rounded-md text-slate-600 hover:bg-slate-200 disabled:opacity-50 transition-colors cursor-pointer"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Visual Assessment Template Builder Modal */}
       <TemplateBuilderModal

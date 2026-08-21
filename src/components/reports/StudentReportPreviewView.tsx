@@ -234,7 +234,7 @@ export const StudentReportPreviewView: React.FC<StudentReportPreviewViewProps> =
       </div>
 
       {/* Main Document Card (Confidential Psychological Evaluation) */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-10 shadow-xs space-y-8 print:shadow-none print:border-none">
+      <div className="bg-white border border-slate-200/60 rounded-3xl p-6 sm:p-10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] space-y-8 print:shadow-none print:border-none">
         {/* Document Header */}
         <div className="pb-6 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
@@ -255,7 +255,7 @@ export const StudentReportPreviewView: React.FC<StudentReportPreviewViewProps> =
         {/* Section 1: Student Information & Referral Reason */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Left: Student Information */}
-          <div className="lg:col-span-7 border border-slate-200/90 rounded-xl p-5 space-y-4">
+          <div className="lg:col-span-7 bg-white border border-slate-200/60 shadow-sm rounded-2xl p-6 space-y-4">
             <div className="flex items-center gap-2 text-blue-700 font-bold text-xs">
               <User className="w-4 h-4" />
               <span>Student Information</span>
@@ -290,7 +290,7 @@ export const StudentReportPreviewView: React.FC<StudentReportPreviewViewProps> =
           </div>
 
           {/* Right: Referral Reason */}
-          <div className="lg:col-span-5 bg-slate-50/70 border border-slate-200/90 rounded-xl p-5 space-y-2.5 flex flex-col justify-between">
+          <div className="lg:col-span-5 bg-gradient-to-br from-slate-50 to-slate-100/50 border border-slate-200/60 shadow-sm rounded-2xl p-6 space-y-2.5 flex flex-col justify-between">
             <div>
               <div className="flex items-center gap-2 text-slate-900 font-bold text-xs mb-1.5">
                 <Lightbulb className="w-4 h-4 text-slate-600" />
@@ -323,7 +323,7 @@ export const StudentReportPreviewView: React.FC<StudentReportPreviewViewProps> =
               <span>Behavioral &amp; Observational Context</span>
             </div>
 
-            <div className="border border-slate-200 rounded-xl p-4 space-y-3 text-xs bg-white">
+            <div className="border border-slate-200/60 shadow-sm rounded-2xl p-5 space-y-3 text-xs bg-white">
               {liveObservations.length > 0 ? (
                 liveObservations.slice(0, 2).map((obs: any, index: number) => (
                   <React.Fragment key={obs.id}>
@@ -365,7 +365,7 @@ export const StudentReportPreviewView: React.FC<StudentReportPreviewViewProps> =
               </span>
             </div>
 
-            <div className="border border-slate-200 rounded-xl p-5 space-y-4 bg-white text-xs">
+            <div className="border border-slate-200/60 shadow-sm rounded-2xl p-6 space-y-4 bg-white text-xs">
               <div className="flex items-center justify-between pb-2 border-b border-slate-100">
                 <span className="font-bold text-slate-900">Standardized Domain Summary</span>
                 <span className="text-[11px] text-slate-400 font-medium">
@@ -449,7 +449,7 @@ export const StudentReportPreviewView: React.FC<StudentReportPreviewViewProps> =
             <span>Recorded Psychologist Interpretation &amp; Actionable Recommendations</span>
           </div>
 
-          <div className="border border-slate-200 rounded-2xl p-6 sm:p-7 space-y-6 bg-white text-xs">
+          <div className="border border-slate-200/60 rounded-3xl p-6 sm:p-8 shadow-sm space-y-6 bg-white text-xs">
             {/* Psychologist Clinical Interpretation */}
             <div className="space-y-2">
               <div className="flex items-center gap-2">

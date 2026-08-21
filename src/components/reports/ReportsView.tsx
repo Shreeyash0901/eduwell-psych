@@ -17,7 +17,8 @@ import {
   Search,
   X,
   FileText,
-  ChevronRight
+  ChevronRight,
+  ChevronLeft
 } from 'lucide-react';
 
 interface ReportsViewProps {
@@ -34,6 +35,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   const [selectedSubView, setSelectedSubView] = useState<'dashboard' | 'grade_report'>('dashboard');
   const [isStudentPickerOpen, setIsStudentPickerOpen] = useState(false);
   const [studentSearch, setStudentSearch] = useState('');
+  const [studentPage, setStudentPage] = useState(1);
+  const studentsLimit = 8;
 
   const filteredStudents = students.filter(
     (s) =>
@@ -42,6 +45,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       s.grade.toLowerCase().includes(studentSearch.toLowerCase()) ||
       s.homeroom.toLowerCase().includes(studentSearch.toLowerCase())
   );
+
+  const totalStudentPages = Math.ceil(filteredStudents.length / studentsLimit) || 1;
+  const paginatedStudents = filteredStudents.slice((studentPage - 1) * studentsLimit, studentPage * studentsLimit);
 
   const handleOpenStudentReport = (student: Student) => {
     setIsStudentPickerOpen(false);
@@ -362,7 +368,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               <input
                 type="text"
                 value={studentSearch}
-                onChange={(e) => setStudentSearch(e.target.value)}
+                onChange={(e) => {
+                  setStudentSearch(e.target.value);
+                  setStudentPage(1);
+                }}
                 placeholder="Search by student name, ID, or grade..."
                 className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-600 focus:bg-white transition-all"
                 autoFocus
@@ -371,8 +380,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 
             {/* Students List */}
             <div className="overflow-y-auto divide-y divide-slate-100 flex-1 pr-1 max-h-80 space-y-1">
-              {filteredStudents.length > 0 ? (
-                filteredStudents.map((s) => (
+              {paginatedStudents.length > 0 ? (
+                paginatedStudents.map((s) => (
                   <button
                     key={s.id}
                     onClick={() => handleOpenStudentReport(s)}
@@ -418,6 +427,34 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                 </div>
               )}
             </div>
+
+            {/* Pagination Controls */}
+            {totalStudentPages > 1 && (
+              <div className="pt-4 border-t border-slate-100 flex items-center justify-between mt-auto">
+                <span className="text-xs text-slate-500 font-medium">
+                  Showing {(studentPage - 1) * studentsLimit + 1} to {Math.min(studentPage * studentsLimit, filteredStudents.length)} of {filteredStudents.length}
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    disabled={studentPage === 1}
+                    onClick={() => setStudentPage((p) => Math.max(1, p - 1))}
+                    className="p-1.5 rounded-md text-slate-500 hover:bg-slate-100 disabled:opacity-50 transition-colors cursor-pointer"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <span className="text-xs font-semibold text-slate-700 bg-slate-50 px-2 py-1 rounded border border-slate-200">
+                    {studentPage} / {totalStudentPages}
+                  </span>
+                  <button
+                    disabled={studentPage === totalStudentPages}
+                    onClick={() => setStudentPage((p) => Math.min(totalStudentPages, p + 1))}
+                    className="p-1.5 rounded-md text-slate-500 hover:bg-slate-100 disabled:opacity-50 transition-colors cursor-pointer"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
