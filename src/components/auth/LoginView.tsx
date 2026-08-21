@@ -9,9 +9,13 @@ import {
   Eye,
   EyeOff,
   ArrowRight,
-  Brain,
+  BrainCircuit,
   ShieldAlert,
   CheckCircle2,
+  Sparkles,
+  Shield,
+  BarChart3,
+  Users,
 } from 'lucide-react';
 
 interface LoginViewProps {
@@ -33,6 +37,21 @@ declare global {
   }
 }
 
+const FEATURE_BULLETS = [
+  { icon: Shield, text: 'FERPA & HIPAA compliant infrastructure' },
+  { icon: BarChart3, text: 'Evidence-based psychometric assessments' },
+  { icon: Users, text: 'Multi-role RBAC for entire school ecosystem' },
+  { icon: Sparkles, text: 'AI-assisted risk classification & reporting' },
+];
+
+const ROLE_CONFIG: Record<UserRole, { label: string; color: string; bg: string; border: string }> = {
+  psychologist: { label: 'PSYCHOLOGIST', color: '#3b5bdb', bg: 'rgba(59,91,219,0.12)', border: 'rgba(59,91,219,0.25)' },
+  teacher:      { label: 'TEACHER',      color: '#059669', bg: 'rgba(5,150,105,0.12)',   border: 'rgba(5,150,105,0.25)' },
+  admin:        { label: 'PRINCIPAL',    color: '#d97706', bg: 'rgba(217,119,6,0.12)',   border: 'rgba(217,119,6,0.25)' },
+  super_admin:  { label: 'SUPER ADMIN',  color: '#7c3aed', bg: 'rgba(124,58,237,0.12)', border: 'rgba(124,58,237,0.25)' },
+  parent:       { label: 'PARENT',       color: '#db2777', bg: 'rgba(219,39,119,0.12)', border: 'rgba(219,39,119,0.25)' },
+};
+
 export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
   const { login, loginWithGoogle, isLoading, error: authError, clearError } = useAuth();
 
@@ -48,26 +67,20 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
   const gsiInitialized = useRef(false);
   const googleClientId = ((import.meta as any).env?.VITE_GOOGLE_CLIENT_ID as string) || '';
 
-  // Initialize Google Identity Services
   useEffect(() => {
     const handleCredentialResponse = async (response: any) => {
-      if (!response || !response.credential) {
+      if (!response?.credential) {
         setLocalError('No credential token received from Google.');
         toast.error('No credential token received from Google.');
         return;
       }
-
       setIsGoogleLoading(true);
       setLocalError('');
       clearError();
-
       try {
         const success = await loginWithGoogle(response.credential);
-        if (success) {
-          toast.success('Signed in with Google successfully!');
-        } else {
-          toast.error(authError || 'Google authentication failed.');
-        }
+        if (success) toast.success('Signed in with Google!');
+        else toast.error(authError || 'Google authentication failed.');
       } catch (err: any) {
         toast.error(err.message || 'Google authentication error.');
       } finally {
@@ -84,44 +97,30 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
             callback: handleCredentialResponse,
             auto_select: false,
             cancel_on_tap_outside: true,
-            use_fedcm_for_button: true,
           });
-
           googleBtnRef.current.innerHTML = '';
           window.google.accounts.id.renderButton(googleBtnRef.current, {
-            type: 'standard',
-            theme: 'outline',
-            size: 'large',
-            text: 'signin_with',
-            shape: 'rectangular',
-            logo_alignment: 'left',
-            width: 320,
+            type: 'standard', theme: 'outline', size: 'large',
+            text: 'signin_with', shape: 'rectangular', logo_alignment: 'left', width: 320,
           });
         } catch (err) {
-          gsiInitialized.current = false; // allow retry on error
-          console.warn('[AUTH_GSI] GSI initialization warning:', err);
+          gsiInitialized.current = false;
+          console.warn('[AUTH_GSI]', err);
         }
       }
     };
 
-    if (window.google?.accounts?.id) {
-      initGsi();
-    } else {
-      const interval = setInterval(() => {
-        if (window.google?.accounts?.id) {
-          clearInterval(interval);
-          initGsi();
-        }
-      }, 300);
-      return () => clearInterval(interval);
+    if (window.google?.accounts?.id) initGsi();
+    else {
+      const iv = setInterval(() => { if (window.google?.accounts?.id) { clearInterval(iv); initGsi(); } }, 300);
+      return () => clearInterval(iv);
     }
   }, [googleClientId, loginWithGoogle, clearError]);
 
   const handleSelectPreset = (preset: UserSession) => {
     setSelectedPresetId(preset.id);
     setEmail(preset.email);
-    const pass = preset.role === 'super_admin' ? 'SuperAdmin@2024!' : 'password123';
-    setPassword(pass);
+    setPassword(preset.role === 'super_admin' ? 'SuperAdmin@2024!' : 'password123');
     setLocalError('');
     clearError();
   };
@@ -130,191 +129,177 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
     e.preventDefault();
     setLocalError('');
     clearError();
-
     const trimmedEmail = email.trim();
-    if (!trimmedEmail) {
-      setLocalError('Please enter an email address.');
-      toast.error('Please enter an email address.');
-      return;
-    }
-
-    if (!password) {
-      setLocalError('Please enter a password.');
-      toast.error('Please enter a password.');
-      return;
-    }
-
+    if (!trimmedEmail) { setLocalError('Please enter an email.'); toast.error('Please enter an email.'); return; }
+    if (!password) { setLocalError('Please enter a password.'); toast.error('Please enter a password.'); return; }
     const success = await login(trimmedEmail, password);
-
-    if (success) {
-      toast.success('Signed in successfully!');
-      if (onLogin) {
-        // Handled by AuthContext state
-      }
-    } else {
-      toast.error(authError || 'Invalid email or password.');
-    }
-  };
-
-  const getRoleBadgeStyle = (role: UserRole) => {
-    switch (role) {
-      case 'psychologist':
-        return 'bg-blue-50 text-blue-700 border-blue-200';
-      case 'teacher':
-        return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-      case 'parent':
-        return 'bg-amber-50 text-amber-800 border-amber-200';
-      case 'admin':
-        return 'bg-purple-50 text-purple-700 border-purple-200';
-      case 'super_admin':
-        return 'bg-indigo-50 text-indigo-700 border-indigo-200';
-    }
-  };
-
-  const getRoleBadgeLabel = (role: UserRole): string => {
-    switch (role) {
-      case 'psychologist':
-        return 'PSYCHOLOGIST';
-      case 'teacher':
-        return 'TEACHER';
-      case 'admin':
-        return 'PRINCIPAL';
-      case 'super_admin':
-        return 'SUPER ADMIN';
-      case 'parent':
-        return 'PARENT';
-      default:
-        return String(role).toUpperCase();
-    }
+    if (success) toast.success('Welcome back!');
+    else toast.error(authError || 'Invalid credentials.');
   };
 
   const displayedError = localError || authError;
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative overflow-hidden font-sans">
-      {/* Background Decorative Gradient Blobs */}
-      <div className="absolute -top-32 -left-32 w-96 h-96 bg-blue-100/60 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute -bottom-32 -right-32 w-96 h-96 bg-indigo-100/60 rounded-full blur-3xl pointer-events-none" />
-
-      {/* Main Container */}
-      <div className="sm:mx-auto sm:w-full sm:max-w-2xl z-10 space-y-6">
-        {/* Brand Header */}
-        <div className="text-center space-y-2">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-blue-700 text-white shadow-md shadow-blue-700/20 mb-2">
-            <Brain className="w-8 h-8" />
-          </div>
-          <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
-            EduWell Psych
-          </h1>
-          <p className="text-sm font-medium text-slate-500 max-w-sm mx-auto">
-            Professional Suite for School Psychology, Behavioral Tracking &amp; Academic Wellness
-          </p>
+    <div className="min-h-screen flex overflow-hidden" style={{ fontFamily: "'Inter', sans-serif" }}>
+      {/* ── Left Panel: Brand / Illustration ── */}
+      <div
+        className="hidden lg:flex flex-col justify-between w-[44%] p-10 relative overflow-hidden"
+        style={{
+          background: 'linear-gradient(145deg, #0f1724 0%, #111827 50%, #0d1220 100%)',
+        }}
+      >
+        {/* Ambient glow blobs */}
+        <div className="absolute top-0 left-0 w-full h-full pointer-events-none overflow-hidden">
+          <div className="absolute -top-24 -left-24 w-96 h-96 rounded-full animate-float" style={{ background: 'radial-gradient(circle, rgba(59,91,219,0.25) 0%, transparent 70%)', filter: 'blur(40px)' }} />
+          <div className="absolute bottom-0 right-0 w-80 h-80 rounded-full" style={{ background: 'radial-gradient(circle, rgba(124,58,237,0.2) 0%, transparent 70%)', filter: 'blur(50px)', animationDelay: '1.5s' }} />
+          <div className="absolute top-1/2 left-1/3 w-64 h-64 rounded-full" style={{ background: 'radial-gradient(circle, rgba(20,184,166,0.08) 0%, transparent 70%)', filter: 'blur(40px)' }} />
         </div>
 
-        {/* Login Card */}
-        <div className="bg-white py-8 px-6 sm:px-10 shadow-xl shadow-slate-200/50 rounded-3xl border border-slate-200/80 space-y-6">
+        {/* Grid overlay for depth */}
+        <div className="absolute inset-0 pointer-events-none" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
+
+        {/* Brand */}
+        <div className="relative z-10 flex items-center gap-3 animate-fade-in">
+          <div
+            className="w-9 h-9 rounded-xl flex items-center justify-center"
+            style={{ background: 'linear-gradient(135deg,#3b5bdb,#7950f2)', boxShadow: '0 0 20px rgba(59,91,219,0.5)' }}
+          >
+            <BrainCircuit style={{ width: '18px', height: '18px', color: '#fff' }} />
+          </div>
+          <div>
+            <div className="text-base font-bold leading-none" style={{ color: '#fff', letterSpacing: '-0.01em' }}>EduWell Psych</div>
+            <div className="text-[10px] font-semibold uppercase tracking-widest mt-0.5" style={{ color: 'rgba(255,255,255,0.3)' }}>Professional Suite</div>
+          </div>
+        </div>
+
+        {/* Hero text */}
+        <div className="relative z-10 space-y-6 animate-slide-up" style={{ animationDelay: '100ms' }}>
+          <div>
+            <h2 className="text-3xl font-extrabold leading-tight" style={{ color: '#fff', letterSpacing: '-0.02em' }}>
+              Empowering<br />
+              <span style={{ background: 'linear-gradient(120deg,#a5b4fc,#818cf8,#c4b5fd)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                Student Wellbeing
+              </span>
+            </h2>
+            <p className="mt-3 text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.45)', maxWidth: '340px' }}>
+              A clinical-grade platform for school psychologists, educators, and administrators to track, assess, and support every student's mental health journey.
+            </p>
+          </div>
+
+          {/* Feature list */}
+          <div className="space-y-3 stagger">
+            {FEATURE_BULLETS.map(({ icon: Icon, text }) => (
+              <div key={text} className="flex items-start gap-3 animate-fade-in">
+                <div className="w-7 h-7 rounded-lg shrink-0 flex items-center justify-center" style={{ background: 'rgba(92,124,250,0.15)', border: '1px solid rgba(92,124,250,0.25)' }}>
+                  <Icon style={{ width: '13px', height: '13px', color: '#818cf8' }} />
+                </div>
+                <p className="text-xs font-medium leading-relaxed pt-1" style={{ color: 'rgba(255,255,255,0.55)' }}>{text}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Footer tag */}
+        <div className="relative z-10 animate-fade-in" style={{ animationDelay: '300ms' }}>
+          <p className="text-[10px] font-medium" style={{ color: 'rgba(255,255,255,0.2)' }}>
+            © 2025 EduWell Technologies Inc. · SOC 2 Type II · FERPA · HIPAA
+          </p>
+        </div>
+      </div>
+
+      {/* ── Right Panel: Login Form ── */}
+      <div className="flex-1 flex items-center justify-center p-6 sm:p-10" style={{ background: '#f8f9fc' }}>
+        <div className="w-full max-w-md space-y-6 animate-scale-in">
+          {/* Mobile brand */}
+          <div className="flex lg:hidden items-center gap-2 mb-2">
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg,#3b5bdb,#7950f2)' }}>
+              <BrainCircuit style={{ width: '16px', height: '16px', color: '#fff' }} />
+            </div>
+            <span className="font-bold text-base text-slate-900">EduWell Psych</span>
+          </div>
+
+          {/* Heading */}
+          <div>
+            <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Sign in to your workspace</h1>
+            <p className="text-sm text-slate-500 font-medium mt-1">Choose a demo account or enter your credentials below.</p>
+          </div>
+
+          {/* Error */}
           {displayedError && (
-            <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold flex items-center gap-2 animate-in fade-in duration-150">
-              <ShieldAlert className="w-4 h-4 shrink-0" />
-              <span>{displayedError}</span>
+            <div className="p-3.5 rounded-xl flex items-center gap-2 animate-fade-in" style={{ background: '#fff1f2', border: '1px solid #fecdd3', color: '#be123c' }}>
+              <ShieldAlert style={{ width: '15px', height: '15px', flexShrink: 0 }} />
+              <span className="text-xs font-semibold">{displayedError}</span>
             </div>
           )}
 
-          {/* Quick RBAC Role Selectors (1-Click Demo Logins) */}
+          {/* RBAC preset cards */}
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                1-Click Demo Accounts (RBAC Roles)
-              </span>
-              <span className="text-[11px] font-semibold text-blue-700">
-                Select to test permissions
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-              {demoUsers
-                .filter((preset) => ['psychologist', 'teacher', 'admin', 'super_admin'].includes(preset.role))
-                .map((preset) => {
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">1-Click Demo Accounts</p>
+            <div className="grid grid-cols-2 gap-2">
+              {demoUsers.filter(p => ['psychologist', 'teacher', 'admin', 'super_admin'].includes(p.role)).map((preset) => {
                 const isSelected = selectedPresetId === preset.id;
+                const cfg = ROLE_CONFIG[preset.role];
                 return (
                   <button
                     key={preset.id}
                     type="button"
                     onClick={() => handleSelectPreset(preset)}
-                    className={`p-2.5 rounded-xl border text-left flex flex-col justify-between gap-2 transition-all cursor-pointer ${
-                      isSelected
-                        ? 'border-blue-600 bg-blue-50/50 ring-2 ring-blue-600/20 shadow-2xs'
-                        : 'border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50/60'
-                    }`}
+                    className="p-3 rounded-xl text-left flex flex-col gap-2 transition-all cursor-pointer card-hover"
+                    style={{
+                      background: isSelected ? '#fff' : '#fff',
+                      border: isSelected ? `1.5px solid ${cfg.color}` : '1px solid #e2e8f0',
+                      boxShadow: isSelected ? `0 0 0 3px ${cfg.bg}, 0 2px 8px rgba(0,0,0,0.06)` : '0 1px 3px rgba(0,0,0,0.04)',
+                      transition: 'all 180ms',
+                    }}
                   >
-                    <div className="flex items-center gap-2">
-                      <img
-                        src={preset.avatarUrl}
-                        alt={preset.name}
-                        className="w-7 h-7 rounded-full object-cover shrink-0 ring-1 ring-slate-200"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <span className="text-xs font-bold text-slate-900 block truncate">
-                          {preset.name}
-                        </span>
-                      </div>
-                      {isSelected && (
-                        <CheckCircle2 className="w-3.5 h-3.5 text-blue-700 shrink-0" />
-                      )}
+                    <div className="flex items-center justify-between">
+                      <img src={preset.avatarUrl} alt={preset.name} className="w-7 h-7 rounded-full object-cover shrink-0" style={{ border: '1.5px solid #f1f5f9' }} />
+                      {isSelected && <CheckCircle2 style={{ width: '14px', height: '14px', color: cfg.color, flexShrink: 0 }} />}
                     </div>
-                    <span
-                      className={`self-start inline-block px-1.5 py-0.5 rounded text-[9px] font-bold uppercase border ${getRoleBadgeStyle(
-                        preset.role
-                      )}`}
-                    >
-                      {getRoleBadgeLabel(preset.role)}
-                    </span>
+                    <div>
+                      <p className="text-xs font-bold text-slate-900 truncate leading-tight">{preset.name.split(' ').slice(0, 2).join(' ')}</p>
+                      <span
+                        className="text-[9px] font-bold mt-0.5 px-1.5 py-0.5 rounded inline-block uppercase tracking-wider"
+                        style={{ background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}` }}
+                      >
+                        {cfg.label}
+                      </span>
+                    </div>
                   </button>
                 );
               })}
             </div>
           </div>
 
+          {/* Divider */}
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-px bg-slate-200" />
+            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">or sign in manually</span>
+            <div className="flex-1 h-px bg-slate-200" />
+          </div>
 
-          {/* Credentials Form */}
+          {/* Form */}
           <form onSubmit={handleFormSubmit} className="space-y-4">
-            {/* Email Field */}
             <div className="space-y-1.5">
-              <label
-                htmlFor="email"
-                className="block text-xs font-bold text-slate-700"
-              >
-                Email Address
-              </label>
+              <label htmlFor="email" className="text-xs font-bold text-slate-700 block">Email Address</label>
               <div className="relative">
-                <Mail className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Mail style={{ width: '14px', height: '14px', position: 'absolute', left: '13px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
                 <input
                   id="email"
                   type="email"
                   required
                   value={email}
-                  onChange={(e) => {
-                    setEmail(e.target.value);
-                    if (displayedError) {
-                      setLocalError('');
-                      clearError();
-                    }
-                  }}
-                  placeholder="name@eduwell.org"
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-600 focus:bg-white transition-all font-medium"
+                  onChange={(e) => { setEmail(e.target.value); if (displayedError) { setLocalError(''); clearError(); } }}
+                  placeholder="name@school.org"
+                  className="input-base"
+                  style={{ paddingLeft: '36px' }}
                 />
               </div>
             </div>
 
-            {/* Password Field */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <label
-                  htmlFor="password"
-                  className="block text-xs font-bold text-slate-700"
-                >
-                  Password
-                </label>
+                <label htmlFor="password" className="text-xs font-bold text-slate-700 block">Password</label>
                 <button
                   type="button"
                   onClick={() => {
@@ -322,106 +307,89 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
                     setPassword(pass);
                     toast.info(`Demo password set: ${pass}`);
                   }}
-                  className="text-[11px] font-semibold text-blue-700 hover:underline cursor-pointer"
+                  className="text-[11px] font-semibold transition-colors cursor-pointer"
+                  style={{ color: '#3b5bdb' }}
+                  onMouseEnter={e => (e.currentTarget.style.color = '#1e3a8a')}
+                  onMouseLeave={e => (e.currentTarget.style.color = '#3b5bdb')}
                 >
-                  Demo password: {selectedPresetId === 'u-super-admin' ? 'SuperAdmin@2024!' : 'password123'}
+                  Use demo password
                 </button>
               </div>
               <div className="relative">
-                <Lock className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Lock style={{ width: '14px', height: '14px', position: 'absolute', left: '13px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
                 <input
                   id="password"
                   type={showPassword ? 'text' : 'password'}
                   required
                   value={password}
-                  onChange={(e) => {
-                    setPassword(e.target.value);
-                    if (displayedError) {
-                      setLocalError('');
-                      clearError();
-                    }
-                  }}
+                  onChange={(e) => { setPassword(e.target.value); if (displayedError) { setLocalError(''); clearError(); } }}
                   placeholder="••••••••"
-                  className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-600 focus:bg-white transition-all font-medium"
+                  className="input-base"
+                  style={{ paddingLeft: '36px', paddingRight: '42px' }}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 transition-colors cursor-pointer"
+                  style={{ color: '#94a3b8' }}
+                  onMouseEnter={e => (e.currentTarget.style.color = '#475569')}
+                  onMouseLeave={e => (e.currentTarget.style.color = '#94a3b8')}
                 >
-                  {showPassword ? (
-                    <EyeOff className="w-4 h-4" />
-                  ) : (
-                    <Eye className="w-4 h-4" />
-                  )}
+                  {showPassword ? <EyeOff style={{ width: '15px', height: '15px' }} /> : <Eye style={{ width: '15px', height: '15px' }} />}
                 </button>
               </div>
             </div>
 
-            {/* Remember Me */}
-            <div className="flex items-center justify-between pt-1">
-              <label className="flex items-center gap-2 text-xs font-medium text-slate-600 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                  className="w-4 h-4 text-blue-600 rounded-sm border-slate-300 focus:ring-blue-500 cursor-pointer"
-                />
-                <span>Remember session on this device</span>
+            <div className="flex items-center gap-2">
+              <input
+                id="remember"
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="cursor-pointer"
+                style={{ width: '14px', height: '14px', accentColor: '#3b5bdb' }}
+              />
+              <label htmlFor="remember" className="text-xs font-medium text-slate-600 cursor-pointer select-none">
+                Remember session on this device
               </label>
             </div>
 
-            {/* Submit Action */}
             <button
               type="submit"
               disabled={isLoading || isGoogleLoading}
-              className="w-full mt-2 py-3 px-4 bg-blue-700 hover:bg-blue-800 text-white text-sm font-bold rounded-xl shadow-md shadow-blue-700/20 hover:shadow-blue-700/30 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-70"
+              className="w-full py-3 px-4 text-white text-sm font-bold rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-all btn-primary disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none"
             >
               {isLoading || isGoogleLoading ? (
-                <span>Signing in...</span>
+                <span className="flex items-center gap-2">
+                  <svg className="animate-spin" style={{ width: '15px', height: '15px' }} viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.3)" strokeWidth="3" />
+                    <path d="M12 2a10 10 0 0 1 10 10" stroke="#fff" strokeWidth="3" strokeLinecap="round" />
+                  </svg>
+                  Signing in…
+                </span>
               ) : (
                 <>
-                  <span>Sign In with Password</span>
-                  <ArrowRight className="w-4 h-4" />
+                  <span>Sign In</span>
+                  <ArrowRight style={{ width: '16px', height: '16px' }} />
                 </>
               )}
             </button>
           </form>
 
-          {/* Official Google Sign-In Section (Phase 3) */}
-          <div className="space-y-3 pt-2">
-            <div className="relative flex items-center justify-center my-2">
-              <div className="border-t border-slate-200 w-full" />
-              <span className="bg-white px-3 text-[11px] font-bold uppercase text-slate-400 tracking-wider absolute">
-                Or Single Sign-On (SSO)
-              </span>
+          {/* Google SSO */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-px bg-slate-200" />
+              <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Or SSO</span>
+              <div className="flex-1 h-px bg-slate-200" />
             </div>
-
-            <div className="flex flex-col items-center justify-center min-h-[44px]">
+            <div className="flex justify-center min-h-[44px]">
               <div ref={googleBtnRef} id="googleSignInButton" className="w-full flex justify-center" />
               {!googleClientId && (
-                <div className="w-full p-2.5 rounded-xl border border-dashed border-slate-200 bg-slate-50 text-center">
-                  <div className="flex items-center justify-center gap-2 text-xs font-medium text-slate-600">
-                    <svg className="w-4 h-4" viewBox="0 0 24 24">
-                      <path
-                        fill="#4285F4"
-                        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                      />
-                      <path
-                        fill="#34A853"
-                        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                      />
-                      <path
-                        fill="#FBBC05"
-                        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-                      />
-                      <path
-                        fill="#EA4335"
-                        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-                      />
-                    </svg>
-                    <span>Google Identity Services (Configure <code className="text-slate-800">VITE_GOOGLE_CLIENT_ID</code>)</span>
-                  </div>
+                <div className="w-full p-2.5 rounded-xl text-center" style={{ border: '1px dashed #e2e8f0', background: '#f8fafc' }}>
+                  <p className="text-[11px] font-medium text-slate-500">
+                    Google SSO — configure <code className="text-slate-700 font-mono bg-slate-100 px-1 rounded">VITE_GOOGLE_CLIENT_ID</code>
+                  </p>
                 </div>
               )}
             </div>

@@ -372,16 +372,25 @@ function MainApplication() {
   // Auth Loading Splash Screen
   if (isAuthLoading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center font-sans">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-blue-700 text-white shadow-lg shadow-blue-700/20 flex items-center justify-center animate-pulse">
-            <Brain className="w-8 h-8" />
+      <div className="min-h-screen flex flex-col items-center justify-center" style={{ background: '#0f1117', fontFamily: "'Inter', sans-serif" }}>
+        <div className="flex flex-col items-center gap-5">
+          <div
+            className="w-14 h-14 rounded-2xl flex items-center justify-center"
+            style={{ background: 'linear-gradient(135deg,#3b5bdb,#7950f2)', boxShadow: '0 0 32px rgba(59,91,219,0.6)' }}
+          >
+            <Brain className="w-8 h-8" style={{ color: '#fff' }} />
           </div>
-          <div className="flex items-center gap-2 text-sm font-semibold text-slate-600">
-            <div className="w-2 h-2 rounded-full bg-blue-600 animate-bounce" />
-            <div className="w-2 h-2 rounded-full bg-blue-600 animate-bounce [animation-delay:0.2s]" />
-            <div className="w-2 h-2 rounded-full bg-blue-600 animate-bounce [animation-delay:0.4s]" />
-            <span>Restoring secure session...</span>
+          <div className="flex flex-col items-center gap-2">
+            <div className="flex items-center gap-1.5">
+              {[0, 0.15, 0.3].map((delay, i) => (
+                <div
+                  key={i}
+                  className="w-1.5 h-1.5 rounded-full animate-bounce"
+                  style={{ background: '#4c6ef5', animationDelay: `${delay}s` }}
+                />
+              ))}
+            </div>
+            <span className="text-sm font-medium" style={{ color: 'rgba(255,255,255,0.4)' }}>Restoring secure session…</span>
           </div>
         </div>
       </div>
@@ -394,7 +403,7 @@ function MainApplication() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100/60 font-sans text-slate-800 flex antialiased">
+    <div className="min-h-screen font-sans text-slate-800 flex antialiased" style={{ background: '#f0f4fa' }}>
       <Toaster position="top-right" richColors />
       {/* Left Sidebar Navigation */}
       <Sidebar
@@ -421,7 +430,7 @@ function MainApplication() {
           }
         />
 
-        <main className="flex-1 pb-16">
+        <main className="flex-1 pb-16" style={{ background: '#f0f4fa' }}>
           {currentUser.role === 'super_admin' ? (
             <SuperAdminDashboard
               activeTab={activeTab}
