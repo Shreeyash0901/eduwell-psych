@@ -483,16 +483,19 @@ settingsRouter.post("/users/invite", requireRole("ADMIN"), async (req: Authentic
 
     return res.status(201).json({
       success: true,
-      message: `Invitation generated for ${newUser.name} (${newUser.role})!`,
+      message: `Invitation generated for ${trimmedName} (${formattedRole})!`,
       inviteLink: `/join?token=${inviteToken}`,
       inviteToken,
       schoolName: school?.name || "EduWell School",
       user: {
-        ...newUser,
-        createdAt: newUser.createdAt.toISOString(),
+        id: 0,
+        name: trimmedName,
+        email: trimmedEmail,
+        role: formattedRole,
+        status: "PENDING_INVITE",
+        createdAt: new Date().toISOString(),
         classAccess: [],
         sectionAccess: [],
-        temporaryPassword: rawPassword,
       },
     });
   } catch (error: any) {
