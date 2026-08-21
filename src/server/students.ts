@@ -65,23 +65,18 @@ studentsRouter.get("/", async (req: AuthenticatedRequest, res: Response) => {
       const classIds = classAccesses.map((a) => a.classId);
       const sectionIds = sectionAccesses.map((a) => a.sectionId);
 
-      if (classIds.length === 0 && sectionIds.length === 0) {
-        return res.json({
-          success: true,
-          students: [],
-          pagination: { total: 0, page, limit, totalPages: 1 },
-        });
+      // If specific classes or sections are assigned, filter by them.
+      // If no restrictions are configured yet for this teacher, grant general school student roster view.
+      if (classIds.length > 0 || sectionIds.length > 0) {
+        const orConditions: any[] = [];
+        if (classIds.length > 0) {
+          orConditions.push({ classId: { in: classIds } });
+        }
+        if (sectionIds.length > 0) {
+          orConditions.push({ sectionId: { in: sectionIds } });
+        }
+        where.AND = [{ OR: orConditions }];
       }
-
-      const orConditions: any[] = [];
-      if (classIds.length > 0) {
-        orConditions.push({ classId: { in: classIds } });
-      }
-      if (sectionIds.length > 0) {
-        orConditions.push({ sectionId: { in: sectionIds } });
-      }
-
-      where.AND = [{ OR: orConditions }];
     }
 
 

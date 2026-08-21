@@ -40,10 +40,8 @@ lookupsRouter.get("/student-filters", async (req: AuthenticatedRequest, res: Res
       const directClassIds = classAccesses.map((a) => a.classId);
       const directSectionIds = sectionAccesses.map((a) => a.sectionId);
 
-      if (directClassIds.length === 0 && directSectionIds.length === 0) {
-        classWhere.id = { in: [] };
-        sectionWhere.id = { in: [] };
-      } else {
+      // If specific classes or sections are configured, filter by them
+      if (directClassIds.length > 0 || directSectionIds.length > 0) {
         const classConditions: any[] = [];
         if (directClassIds.length > 0) {
           classConditions.push({ id: { in: directClassIds } });
