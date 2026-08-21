@@ -132,12 +132,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
           >
             <BrainCircuit className="w-4.5 h-4.5" style={{ width: '18px', height: '18px' }} />
           </div>
-          <div>
-            <div className="font-bold text-[15px] text-slate-900 tracking-tight leading-none">
-              EduWell Psych
+          <div className="min-w-0 flex-1">
+            <div className="font-bold text-[15px] text-slate-900 tracking-tight leading-none truncate">
+              {user?.schoolName || 'EduWell Psych'}
             </div>
-            <div className="text-[10px] font-semibold mt-0.5 text-slate-400 tracking-wider uppercase">
-              {role === 'super_admin' ? 'Control Plane' : 'Professional Suite'}
+            <div className="text-[10px] font-semibold mt-1 text-blue-600 tracking-wider uppercase truncate flex items-center gap-1">
+              <Building2 className="w-3 h-3 shrink-0" />
+              <span>{role === 'super_admin' ? 'Control Plane' : 'School Workspace'}</span>
             </div>
           </div>
         </div>

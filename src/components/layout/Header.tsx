@@ -266,11 +266,19 @@ export const Header: React.FC<HeaderProps> = ({
         boxShadow: '0 1px 0 rgba(15,23,42,0.05)',
       }}
     >
-      {/* Left: page breadcrumb */}
+      {/* Left: page breadcrumb & school name badge */}
       <div className="flex items-center gap-3 min-w-0">
         {pageInfo && (
           <div className="min-w-0 hidden sm:block animate-fade-in">
-            <p className="text-[13px] font-bold text-slate-900 leading-tight truncate">{pageInfo.title}</p>
+            <div className="flex items-center gap-2">
+              <p className="text-[13px] font-bold text-slate-900 leading-tight truncate">{pageInfo.title}</p>
+              {user?.schoolName && user.role !== 'super_admin' && (
+                <span className="hidden md:inline-flex items-center gap-1 text-[10px] font-bold text-blue-700 bg-blue-50/90 border border-blue-200/80 px-2 py-0.5 rounded-full truncate max-w-[180px]">
+                  <Building2 className="w-2.5 h-2.5 shrink-0" />
+                  <span className="truncate">{user.schoolName}</span>
+                </span>
+              )}
+            </div>
             <p className="text-[10px] text-slate-400 font-medium truncate leading-tight mt-0.5">{pageInfo.subtitle}</p>
           </div>
         )}

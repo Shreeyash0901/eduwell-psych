@@ -118,11 +118,13 @@ export const TeacherDashboardView: React.FC<TeacherDashboardViewProps> = ({
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
-            Good Morning, {teacherName}
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+            <span>Good Morning, {teacherName}</span>
           </h1>
-          <p className="text-xs sm:text-sm text-slate-500 font-medium mt-1">
-            Here is your daily overview of student wellness and assigned assessments.
+          <p className="text-xs sm:text-sm text-slate-500 font-medium mt-1 flex items-center gap-1.5">
+            <Building2 className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+            <span className="font-bold text-slate-700">{user?.schoolName || 'School Workspace'}</span>
+            <span>• Daily overview of student wellness and assigned assessments.</span>
           </p>
         </div>
 

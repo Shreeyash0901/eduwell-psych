@@ -369,8 +369,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
             {getGreeting()}, {greetingName}
           </h1>
-          <p className="text-sm text-slate-500 mt-1 font-medium">
-            Review student concerns, assessments and reports.
+          <p className="text-sm text-slate-500 mt-1 font-medium flex items-center gap-1.5">
+            <span className="font-bold text-slate-700">{user?.schoolName || 'School Workspace'}</span>
+            <span>• Review student concerns, assessments and reports.</span>
           </p>
         </div>
 

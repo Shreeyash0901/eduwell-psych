@@ -151,6 +151,8 @@ export const SchoolProfileSection: React.FC = () => {
       setProfile(data.school);
       setSettings(data.settings);
       toast.success('School profile saved successfully.');
+      // Refresh current user session so that the updated school name reflects instantly everywhere
+      window.location.reload();
     } catch (err: any) {
       setSaveError(err.message || 'Failed to save school profile.');
       toast.error(err.message || 'Failed to save school profile.');
