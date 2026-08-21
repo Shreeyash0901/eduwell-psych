@@ -126,10 +126,17 @@ export const AcceptInviteView: React.FC<AcceptInviteViewProps> = ({ onSuccess })
       if (res.ok && data.success) {
         toast.success(data.message || 'Account activated successfully!');
         await checkSession();
+        // Clear join hash parameter and navigate to appropriate dashboard
+        window.history.replaceState(null, '', window.location.pathname);
+        if (data.user?.role?.toLowerCase() === 'teacher') {
+          window.location.hash = '#teacher_dashboard';
+        } else {
+          window.location.hash = '#dashboard';
+        }
         if (onSuccess) {
           onSuccess();
         } else {
-          window.location.hash = '#dashboard';
+          window.location.reload();
         }
       } else {
         toast.error(data.error || 'Failed to complete signup.');
