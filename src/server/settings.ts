@@ -444,4 +444,54 @@ settingsRouter.delete("/classes/:classId/sections/:sectionId", requireRole("ADMI
     console.error("[SETTINGS] DELETE /classes/:classId/sections/:sectionId error:", error);
     return res.status(500).json({ success: false, error: "Failed to delete section." });
   }
-});
+});
+
+// ── GET /api/settings/audit-logs ──────────────────────────────────────────
+// School-scoped activity audit log for Principals (ADMIN role only).
+// Strictly isolated to the requesting user's school. No cross-tenant access.
+settingsRouter.get(
+  "/audit-logs",
+  requireRole("ADMIN"),
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const schoolId = req.user!.schoolId;
+      if (!schoolId) {
+        return res.status(403).json({ success: false, error: "No school context for this user." });
+      }
+
+      const skip  = Math.max(0, parseInt((req.query.skip  as string) || "0")  || 0);
+      const take  = Math.min(100, Math.max(1, parseInt((req.query.take as string) || "50") || 50));
+      const outcome = ((req.query.outcome as string) || "").toUpperCase();
+      const actorId = req.query.actorId ? parseInt(req.query.actorId as string) : undefined;
+
+      const where: any = { targetSchoolId: schoolId };
+      if (outcome === "SUCCESS" || outcome === "FAILURE") where.outcome = outcome;
+      if (actorId && !isNaN(actorId)) where.actorUserId = actorId;
+
+      const [logs, totalCount] = await Promise.all([
+        prisma.systemAuditLog.findMany({
+          where,
+          orderBy: { createdAt: "desc" },
+          skip,
+          take,
+          select: {
+            id: true,
+            action: true,
+            targetType: true,
+            outcome: true,
+            createdAt: true,
+            metadata: true,
+            actor: { select: { id: true, name: true, email: true, role: true } },
+          },
+        }),
+        prisma.systemAuditLog.count({ where }),
+      ]);
+
+      return res.json({ success: true, logs, totalCount, skip, take });
+    } catch (error) {
+      console.error("[SETTINGS] GET /audit-logs error:", error);
+      return res.status(500).json({ success: false, error: "Failed to retrieve audit logs." });
+    }
+  }
+);
+

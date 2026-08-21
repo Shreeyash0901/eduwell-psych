@@ -4,6 +4,9 @@ import { SchoolApiSettingsSection } from './SchoolApiSettingsSection';
 import { UsersRolesSection } from './UsersRolesSection';
 import { ClassesSectionsSection } from './ClassesSectionsSection';
 import { ComingSoonSection } from './ComingSoonSection';
+import { PrincipalAuditLogSection } from './PrincipalAuditLogSection';
+import { useAuth } from '../../context/AuthContext';
+import { ShieldCheck } from 'lucide-react';
 
 type SettingsSection =
   | 'school_profile'
@@ -12,12 +15,17 @@ type SettingsSection =
   | 'classes_sections'
   | 'assessment_settings'
   | 'report_settings'
-  | 'notifications';
+  | 'notifications'
+  | 'activity_logs';
 
 export const SettingsView: React.FC = () => {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin'; // frontend role string
+
   const [activeSection, setActiveSection] = useState<SettingsSection>('school_profile');
 
-  const navTabs: { id: SettingsSection; label: string }[] = [
+  type NavTab = { id: SettingsSection; label: string; adminOnly?: boolean; icon?: React.ReactNode };
+  const navTabs: NavTab[] = [
     { id: 'school_profile', label: 'School Profile' },
     { id: 'school_api', label: 'School API & Sync' },
     { id: 'users_roles', label: 'Users & Roles' },
@@ -25,7 +33,16 @@ export const SettingsView: React.FC = () => {
     { id: 'assessment_settings', label: 'Assessment Settings' },
     { id: 'report_settings', label: 'Report Settings' },
     { id: 'notifications', label: 'Notifications' },
+    // Only visible to the admin/principal role
+    {
+      id: 'activity_logs',
+      label: 'Activity Logs',
+      adminOnly: true,
+      icon: <ShieldCheck className="w-3.5 h-3.5" />,
+    },
   ];
+
+  const visibleTabs = navTabs.filter((t) => !t.adminOnly || isAdmin);
 
   return (
     <div className="p-6 sm:p-8 max-w-7xl mx-auto space-y-6 animate-in fade-in duration-150">
@@ -41,22 +58,41 @@ export const SettingsView: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 pt-2">
         {/* Left Side: Navigation Tabs */}
         <div className="lg:col-span-3 space-y-1">
-          <nav className="space-y-1">
-            {navTabs.map((tab) => {
+          <nav className="space-y-0.5">
+            {/* Group admin-only tabs visually */}
+            {visibleTabs.map((tab, idx) => {
               const isActive = activeSection === tab.id;
+              // Insert a divider before the first adminOnly tab
+              const prevTab = visibleTabs[idx - 1];
+              const showDivider = tab.adminOnly && prevTab && !prevTab.adminOnly;
               return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveSection(tab.id)}
-                  aria-current={isActive ? 'page' : undefined}
-                  className={`w-full text-left px-4 py-2.5 rounded-lg text-sm transition-all duration-150 font-medium cursor-pointer ${
-                    isActive
-                      ? 'bg-blue-50/90 text-blue-700 font-semibold shadow-2xs'
-                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                  }`}
-                >
-                  {tab.label}
-                </button>
+                <React.Fragment key={tab.id}>
+                  {showDivider && (
+                    <div className="pt-2 pb-1 px-2">
+                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                        Administration
+                      </div>
+                    </div>
+                  )}
+                  <button
+                    onClick={() => setActiveSection(tab.id)}
+                    aria-current={isActive ? 'page' : undefined}
+                    className={`w-full text-left px-4 py-2.5 rounded-lg text-sm transition-all duration-150 font-medium cursor-pointer flex items-center gap-2 ${
+                      isActive
+                        ? tab.adminOnly
+                          ? 'bg-indigo-50 text-indigo-700 font-semibold shadow-2xs'
+                          : 'bg-blue-50/90 text-blue-700 font-semibold shadow-2xs'
+                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                    }`}
+                  >
+                    {tab.icon && (
+                      <span className={isActive ? (tab.adminOnly ? 'text-indigo-500' : 'text-blue-500') : 'text-slate-400'}>
+                        {tab.icon}
+                      </span>
+                    )}
+                    {tab.label}
+                  </button>
+                </React.Fragment>
               );
             })}
           </nav>
@@ -108,6 +144,7 @@ export const SettingsView: React.FC = () => {
               ]}
             />
           )}
+          {activeSection === 'activity_logs' && isAdmin && <PrincipalAuditLogSection />}
         </div>
       </div>
     </div>
