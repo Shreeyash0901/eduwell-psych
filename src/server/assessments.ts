@@ -800,7 +800,7 @@ assessmentsRouter.put("/:id/responses", async (req: AuthenticatedRequest, res: R
           data: {
             assessmentTemplateId: assessment.assessmentTemplate.id,
             name: "Emotional Regulation",
-            code: "EMO",
+            description: "Emotional wellbeing and regulation domain",
             displayOrder: 0,
           },
         });
@@ -816,7 +816,7 @@ assessmentsRouter.put("/:id/responses", async (req: AuthenticatedRequest, res: R
           displayOrder: 0,
         },
       });
-      dbQuestions = [q];
+      dbQuestions = [{ ...q, options: [] }];
     }
 
     const results = [];

@@ -146,7 +146,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {user && (
           <div className="mx-3 mb-3 p-3 rounded-xl flex items-center gap-2.5" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.07)' }}>
             {user.avatarUrl ? (
-              <img src={user.avatarUrl} alt={user.name} className="w-7 h-7 rounded-full object-cover shrink-0" style={{ ring: '1px solid rgba(255,255,255,0.15)' }} />
+              <img src={user.avatarUrl} alt={user.name} className="w-7 h-7 rounded-full object-cover shrink-0 ring-1 ring-white/15" />
             ) : (
               <div className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center text-white text-xs font-bold" style={{ background: 'linear-gradient(135deg,#3b5bdb,#7950f2)' }}>
                 {initials}

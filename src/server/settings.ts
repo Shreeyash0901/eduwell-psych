@@ -342,7 +342,6 @@ settingsRouter.post("/users/invite", requireRole("ADMIN"), async (req: Authentic
     try {
       await prisma.systemAuditLog.create({
         data: {
-          schoolId,
           targetSchoolId: schoolId,
           actorUserId: req.user!.id,
           action: "USER_INVITE",
