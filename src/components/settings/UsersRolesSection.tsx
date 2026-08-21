@@ -12,8 +12,16 @@ interface UserRecord {
   role: string;
   status: string;
   createdAt: string;
+  classIds?: number[];
   classAccess: string[];
-  sectionAccess: { className: string; sectionName: string }[];
+  sectionIds?: number[];
+  sectionAccess: { id?: number; classId?: number; className: string; sectionName: string }[];
+}
+
+interface SchoolClassOption {
+  id: number;
+  name: string;
+  sections: { id: number; name: string }[];
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -27,9 +35,16 @@ export const UsersRolesSection: React.FC = () => {
   const isAdmin = user?.role === 'admin';
 
   const [users, setUsers] = useState<UserRecord[]>([]);
+  const [availableClasses, setAvailableClasses] = useState<SchoolClassOption[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [permissionDenied, setPermissionDenied] = useState(false);
+
+  // Assign Classes Modal State
+  const [editingTeacher, setEditingTeacher] = useState<UserRecord | null>(null);
+  const [selectedClassIds, setSelectedClassIds] = useState<number[]>([]);
+  const [selectedSectionIds, setSelectedSectionIds] = useState<number[]>([]);
+  const [isSavingAccess, setIsSavingAccess] = useState(false);
 
   // Invite Modal State
   const [isInviteOpen, setIsInviteOpen] = useState(false);
@@ -48,7 +63,7 @@ export const UsersRolesSection: React.FC = () => {
   const [copied, setCopied] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
 
-  const loadUsers = useCallback(async () => {
+  const loadUsersAndClasses = useCallback(async () => {
     if (!isAdmin) {
       setPermissionDenied(true);
       setIsLoading(false);
@@ -58,17 +73,26 @@ export const UsersRolesSection: React.FC = () => {
     setLoadError(null);
     setPermissionDenied(false);
     try {
-      const res = await fetch('/api/settings/users', { credentials: 'include' });
-      if (res.status === 403) {
+      const [usersRes, classesRes] = await Promise.all([
+        fetch('/api/settings/users', { credentials: 'include' }),
+        fetch('/api/settings/classes', { credentials: 'include' }),
+      ]);
+
+      if (usersRes.status === 403) {
         setPermissionDenied(true);
         setIsLoading(false);
         return;
       }
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to load users.');
+      const usersData = await usersRes.json();
+      const classesData = await classesRes.json();
+
+      if (!usersRes.ok || !usersData.success) {
+        throw new Error(usersData.error || 'Failed to load users.');
       }
-      setUsers(data.users || []);
+      setUsers(usersData.users || []);
+      if (classesData.success && Array.isArray(classesData.classes)) {
+        setAvailableClasses(classesData.classes);
+      }
     } catch (err: any) {
       setLoadError(err.message || 'Failed to load users.');
     } finally {
@@ -77,8 +101,45 @@ export const UsersRolesSection: React.FC = () => {
   }, [isAdmin]);
 
   useEffect(() => {
-    loadUsers();
-  }, [loadUsers]);
+    loadUsersAndClasses();
+  }, [loadUsersAndClasses]);
+
+  const openClassAssignmentModal = (teacher: UserRecord) => {
+    setEditingTeacher(teacher);
+    setSelectedClassIds(teacher.classIds || []);
+    setSelectedSectionIds(teacher.sectionIds || []);
+  };
+
+  const handleSaveClassAccess = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTeacher) return;
+
+    setIsSavingAccess(true);
+    try {
+      const res = await fetch(`/api/settings/users/${editingTeacher.id}/class-access`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          classIds: selectedClassIds,
+          sectionIds: selectedSectionIds,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast.success(data.message || 'Classroom assignments updated!');
+        setEditingTeacher(null);
+        loadUsersAndClasses();
+      } else {
+        toast.error(data.error || 'Failed to update classroom assignments.');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Network error saving classroom access.');
+    } finally {
+      setIsSavingAccess(false);
+    }
+  };
 
   const handleInviteUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -210,17 +271,37 @@ export const UsersRolesSection: React.FC = () => {
                   </div>
                   <p className="text-xs text-slate-500 font-medium mt-0.5 truncate">{u.email}</p>
 
+                  {u.role === 'TEACHER' && (
+                    <div className="mt-2.5 flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        className="text-[11px] h-7 px-2.5 bg-white hover:bg-slate-100 border-slate-300 text-slate-700"
+                        onClick={() => openClassAssignmentModal(u)}
+                      >
+                        <GraduationCap className="w-3.5 h-3.5 mr-1 text-blue-600" />
+                        <span>Assign Classrooms &amp; Grades</span>
+                      </Button>
+                      {(!u.classAccess || u.classAccess.length === 0) && (!u.sectionAccess || u.sectionAccess.length === 0) && (
+                        <span className="text-[11px] text-amber-600 font-medium bg-amber-50 px-2 py-0.5 rounded border border-amber-200/80">
+                          General school roster
+                        </span>
+                      )}
+                    </div>
+                  )}
+
                   {u.classAccess.length > 0 || u.sectionAccess.length > 0 ? (
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {u.classAccess.map((cls) => (
-                        <span key={`c-${cls}`} className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border border-slate-200 rounded-md text-[10px] font-semibold text-slate-600">
-                          <GraduationCap className="w-3 h-3 text-slate-400" />
+                        <span key={`c-${cls}`} className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50/80 border border-blue-200 rounded-md text-[10px] font-bold text-blue-700">
+                          <GraduationCap className="w-3 h-3 text-blue-500" />
                           {cls} (all sections)
                         </span>
                       ))}
                       {u.sectionAccess.map((sec) => (
-                        <span key={`s-${sec.className}-${sec.sectionName}`} className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border border-slate-200 rounded-md text-[10px] font-semibold text-slate-600">
-                          <GraduationCap className="w-3 h-3 text-slate-400" />
+                        <span key={`s-${sec.className}-${sec.sectionName}`} className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50/80 border border-blue-200 rounded-md text-[10px] font-bold text-blue-700">
+                          <GraduationCap className="w-3 h-3 text-blue-500" />
                           {sec.className} / {sec.sectionName}
                         </span>
                       ))}
@@ -247,6 +328,125 @@ export const UsersRolesSection: React.FC = () => {
           </p>
         </div>
       </SectionCard>
+
+      {/* ── Assign Classes Modal ── */}
+      {editingTeacher && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white border border-slate-200 rounded-3xl shadow-2xl max-w-lg w-full p-6 space-y-5 animate-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center">
+                  <GraduationCap className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-slate-900">Assign Classroom Access</h2>
+                  <p className="text-xs text-slate-500 font-medium">Teacher: <span className="font-bold text-slate-800">{editingTeacher.name}</span></p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingTeacher(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveClassAccess} className="space-y-4 flex-1 overflow-y-auto pr-1">
+              <p className="text-xs text-slate-600">
+                Select which classrooms or sections this teacher is allowed to view. Unselected classrooms will be hidden from their roster and dashboards.
+              </p>
+
+              {availableClasses.length === 0 ? (
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-center text-xs text-slate-500">
+                  No classes created yet in School Settings.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {availableClasses.map((cls) => {
+                    const isWholeClassChecked = selectedClassIds.includes(cls.id);
+                    return (
+                      <div key={cls.id} className="p-3.5 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-2.5">
+                        <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={isWholeClassChecked}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedClassIds((prev) => [...prev, cls.id]);
+                              } else {
+                                setSelectedClassIds((prev) => prev.filter((id) => id !== cls.id));
+                              }
+                            }}
+                            className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span className="text-xs font-bold text-slate-900">{cls.name}</span>
+                          <span className="text-[10px] text-slate-400 font-medium">(All sections)</span>
+                        </label>
+
+                        {/* Individual Sections */}
+                        {cls.sections && cls.sections.length > 0 && (
+                          <div className="pl-6 pt-1 border-t border-slate-200/60 flex flex-wrap gap-2">
+                            {cls.sections.map((sec) => {
+                              const isSecChecked = selectedSectionIds.includes(sec.id);
+                              return (
+                                <label
+                                  key={sec.id}
+                                  className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg border cursor-pointer select-none transition-colors ${
+                                    isSecChecked || isWholeClassChecked
+                                      ? 'bg-blue-100 text-blue-800 border-blue-300 font-bold'
+                                      : 'bg-white text-slate-600 border-slate-200'
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    disabled={isWholeClassChecked}
+                                    checked={isSecChecked || isWholeClassChecked}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setSelectedSectionIds((prev) => [...prev, sec.id]);
+                                      } else {
+                                        setSelectedSectionIds((prev) => prev.filter((id) => id !== sec.id));
+                                      }
+                                    }}
+                                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                  />
+                                  <span>{sec.name}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="flex gap-2 pt-2 border-t border-slate-100">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => setEditingTeacher(null)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="sm"
+                  className="flex-1"
+                  disabled={isSavingAccess}
+                >
+                  {isSavingAccess ? 'Saving...' : 'Save Classroom Access'}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Invite Staff Member Modal */}
       {isInviteOpen && (

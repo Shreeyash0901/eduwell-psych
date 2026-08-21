@@ -244,12 +244,11 @@ settingsRouter.get("/users", requireRole("ADMIN"), async (req: AuthenticatedRequ
         email: true,
         role: true,
         status: true,
-        createdAt: true,
         teacherClassAccesses: {
           select: { class: { select: { id: true, name: true } } },
         },
         teacherSectionAccesses: {
-          select: { section: { select: { id: true, name: true, class: { select: { name: true } } } } },
+          select: { section: { select: { id: true, name: true, classId: true, class: { select: { name: true } } } } },
         },
       },
     });
@@ -263,8 +262,12 @@ settingsRouter.get("/users", requireRole("ADMIN"), async (req: AuthenticatedRequ
         role: u.role,
         status: u.status,
         createdAt: u.createdAt.toISOString(),
+        classIds: u.teacherClassAccesses.map((a) => a.class.id),
         classAccess: u.teacherClassAccesses.map((a) => a.class.name),
+        sectionIds: u.teacherSectionAccesses.map((a) => a.section.id),
         sectionAccess: u.teacherSectionAccesses.map((a) => ({
+          id: a.section.id,
+          classId: a.section.classId,
           className: a.section.class.name,
           sectionName: a.section.name,
         })),
@@ -273,6 +276,110 @@ settingsRouter.get("/users", requireRole("ADMIN"), async (req: AuthenticatedRequ
   } catch (error) {
     console.error("[SETTINGS] GET /users error:", error);
     return res.status(500).json({ success: false, error: "Failed to load users." });
+  }
+});
+
+/**
+ * PUT /api/settings/users/:userId/class-access
+ * Principal assigns specific classes and sections to a Teacher.
+ */
+settingsRouter.put("/users/:userId/class-access", requireRole("ADMIN"), async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const schoolId = req.user!.schoolId;
+    const targetUserId = parseInt(req.params.userId, 10);
+    const { classIds = [], sectionIds = [] } = req.body;
+
+    if (isNaN(targetUserId)) {
+      return res.status(400).json({ success: false, error: "Invalid user ID." });
+    }
+
+    // Verify user belongs to same school and is a TEACHER
+    const targetUser = await prisma.user.findFirst({
+      where: { id: targetUserId, schoolId },
+    });
+
+    if (!targetUser) {
+      return res.status(404).json({ success: false, error: "Teacher not found in your school." });
+    }
+
+    if (targetUser.role.toUpperCase() !== "TEACHER") {
+      return res.status(400).json({ success: false, error: "Class access can only be assigned to Teachers." });
+    }
+
+    // Validate classIds belong to the same school
+    const parsedClassIds = Array.isArray(classIds)
+      ? classIds.map((id: any) => parseInt(id, 10)).filter((id: number) => !isNaN(id))
+      : [];
+
+    const validClasses = await prisma.class.findMany({
+      where: { id: { in: parsedClassIds }, schoolId },
+      select: { id: true },
+    });
+    const validClassIds = validClasses.map((c) => c.id);
+
+    // Validate sectionIds belong to classes of the same school
+    const parsedSectionIds = Array.isArray(sectionIds)
+      ? sectionIds.map((id: any) => parseInt(id, 10)).filter((id: number) => !isNaN(id))
+      : [];
+
+    const validSections = await prisma.section.findMany({
+      where: { id: { in: parsedSectionIds }, class: { schoolId } },
+      select: { id: true },
+    });
+    const validSectionIds = validSections.map((s) => s.id);
+
+    // Execute atomic update of teacher class and section access
+    await prisma.$transaction([
+      prisma.teacherClassAccess.deleteMany({ where: { userId: targetUserId } }),
+      prisma.teacherSectionAccess.deleteMany({ where: { userId: targetUserId } }),
+      ...(validClassIds.length > 0
+        ? [
+            prisma.teacherClassAccess.createMany({
+              data: validClassIds.map((classId) => ({
+                userId: targetUserId,
+                classId,
+              })),
+            }),
+          ]
+        : []),
+      ...(validSectionIds.length > 0
+        ? [
+            prisma.teacherSectionAccess.createMany({
+              data: validSectionIds.map((sectionId) => ({
+                userId: targetUserId,
+                sectionId,
+              })),
+            }),
+          ]
+        : []),
+    ]);
+
+    // Audit log
+    try {
+      await prisma.systemAuditLog.create({
+        data: {
+          targetSchoolId: schoolId,
+          actorUserId: req.user!.id,
+          action: "UPDATE_TEACHER_CLASS_ACCESS",
+          targetType: "USER",
+          targetId: targetUserId,
+          outcome: "SUCCESS",
+          metadata: {
+            assignedClassesCount: validClassIds.length,
+            assignedSectionsCount: validSectionIds.length,
+            targetUserName: targetUser.name,
+          },
+        },
+      });
+    } catch (_) {}
+
+    return res.json({
+      success: true,
+      message: `Updated classroom access for ${targetUser.name}.`,
+    });
+  } catch (error) {
+    console.error("[SETTINGS] PUT /users/:userId/class-access error:", error);
+    return res.status(500).json({ success: false, error: "Failed to update classroom assignment." });
   }
 });
 
