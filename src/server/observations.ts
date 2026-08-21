@@ -228,6 +228,17 @@ observationsRouter.get("/", async (req: AuthenticatedRequest, res: Response) => 
       where.OR = searchFilter;
     }
 
+    const gradeParam = typeof req.query.grade === "string" ? req.query.grade.trim() : "";
+    if (gradeParam && gradeParam !== "All Grades") {
+      where.student = {
+        ...(where.student || {}),
+        OR: [
+          { class: { name: { contains: gradeParam, mode: "insensitive" } } },
+          { section: { name: { contains: gradeParam, mode: "insensitive" } } },
+        ],
+      };
+    }
+
     if (dateFromParam) {
       where.observedAt = { ...(where.observedAt || {}), gte: new Date(dateFromParam) };
     }

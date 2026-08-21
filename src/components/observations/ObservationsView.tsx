@@ -29,6 +29,7 @@ export const ObservationsView: React.FC<ObservationsViewProps> = ({
   const [gradeFilter, setGradeFilter] = useState<string>('All Grades');
   const [dateFilter, setDateFilter] = useState<string>('');
   const [page, setPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
 
   const [observations, setObservations] = useState<ObservationRecord[]>([]);
   const [total, setTotal] = useState<number>(0);
@@ -43,8 +44,9 @@ export const ObservationsView: React.FC<ObservationsViewProps> = ({
       const params = new URLSearchParams();
       if (sourceFilter !== 'All Sources') params.set('source', sourceFilter);
       if (categoryFilter !== 'All Categories') params.set('category', categoryFilter);
+      if (gradeFilter !== 'All Grades') params.set('grade', gradeFilter);
       params.set('page', String(page));
-      params.set('limit', '50');
+      params.set('limit', String(pageSize));
 
       const res = await fetch(`/api/observations?${params.toString()}`, {
         credentials: 'include',
@@ -62,7 +64,7 @@ export const ObservationsView: React.FC<ObservationsViewProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [sourceFilter, categoryFilter, page]);
+  }, [sourceFilter, categoryFilter, gradeFilter, page, pageSize]);
 
   useEffect(() => {
     loadObservations();
@@ -70,11 +72,10 @@ export const ObservationsView: React.FC<ObservationsViewProps> = ({
 
   useEffect(() => {
     setPage(1);
-  }, [sourceFilter, categoryFilter]);
+  }, [sourceFilter, categoryFilter, gradeFilter, pageSize]);
 
   const displayedObservations = observations.filter((obs) => {
-    if (gradeFilter !== 'All Grades' && !obs.classGroup.includes(gradeFilter)) return false;
-    if (dateFilter && !obs.date.includes(dateFilter)) return false;
+    if (dateFilter && !obs.date.toLowerCase().includes(dateFilter.toLowerCase())) return false;
     return true;
   });
 
@@ -127,7 +128,8 @@ export const ObservationsView: React.FC<ObservationsViewProps> = ({
     return colors[hash % colors.length];
   };
 
-  const shownFrom = total === 0 ? 0 : (page - 1) * 50 + 1;
+  const shownFrom = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const shownTo = Math.min(page * pageSize, total);
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-6">
@@ -318,29 +320,52 @@ export const ObservationsView: React.FC<ObservationsViewProps> = ({
         </div>
 
         {/* Table Pagination Bar */}
-        <div className="px-6 py-4 bg-slate-50/50 border-t border-slate-200/60 flex items-center justify-between text-xs text-slate-500 font-medium">
-          <span>
-            {total === 0
-              ? 'No entries'
-              : `Showing ${shownFrom} to ${Math.min(shownFrom + 49, total)} of ${total} entries`}
-          </span>
-          <div className="flex items-center gap-1">
+        <div className="px-6 py-4 bg-slate-50/70 border-t border-slate-200/60 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600 font-medium">
+          <div className="flex items-center gap-4">
+            <span>
+              {total === 0
+                ? 'No entries found'
+                : `Showing ${shownFrom} to ${shownTo} of ${total} entries`}
+            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-slate-400">Rows per page:</span>
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setPage(1);
+                }}
+                className="bg-white border border-slate-200 rounded-md px-2 py-1 text-xs font-semibold text-slate-700 shadow-2xs focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
+              >
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={30}>30</option>
+                <option value={50}>50</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1 || loading}
-              className="p-1.5 rounded-md border border-slate-200 text-slate-400 hover:text-slate-600 disabled:opacity-50 cursor-pointer"
+              className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-white shadow-2xs transition-colors flex items-center gap-1 cursor-pointer"
+              title="Previous Page"
             >
-              <ChevronLeft className="w-4 h-4" />
+              <ChevronLeft className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Prev</span>
             </button>
-            <span className="px-3 py-1 rounded-md bg-blue-700 text-white font-bold text-xs">
-              {page} / {totalPages}
+            <span className="px-3 py-1.5 rounded-lg bg-blue-700 text-white font-bold text-xs shadow-2xs">
+              Page {page} of {totalPages}
             </span>
             <button
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages || loading}
-              className="p-1.5 rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50 cursor-pointer"
+              className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-white shadow-2xs transition-colors flex items-center gap-1 cursor-pointer"
+              title="Next Page"
             >
-              <ChevronRight className="w-4 h-4" />
+              <span className="hidden sm:inline">Next</span>
+              <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
