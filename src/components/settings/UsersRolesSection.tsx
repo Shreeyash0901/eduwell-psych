@@ -186,7 +186,7 @@ export const UsersRolesSection: React.FC = () => {
         setInviteEmail('');
         setInvitePassword('');
         setInviteRole('TEACHER');
-        loadUsers();
+        loadUsersAndClasses();
       } else {
         toast.error(data.error || 'Failed to invite user.');
       }
@@ -576,23 +576,9 @@ export const UsersRolesSection: React.FC = () => {
                     onChange={(e) => setInviteRole(e.target.value as any)}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="TEACHER">Teacher (Can log notes & complete ratings)</option>
-                    <option value="PSYCHOLOGIST">Psychologist (Clinical lead & reports)</option>
-                    <option value="ADMIN">Principal / Admin (School management)</option>
+                    <option value="TEACHER">Teacher</option>
+                    <option value="PSYCHOLOGIST">Psychologist</option>
                   </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Temporary Password <span className="text-slate-400 font-normal">(Optional - auto-generated if blank)</span>
-                  </label>
-                  <input
-                    type="password"
-                    placeholder="Minimum 6 characters"
-                    value={invitePassword}
-                    onChange={(e) => setInvitePassword(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-                  />
                 </div>
 
                 <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">

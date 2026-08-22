@@ -43,7 +43,7 @@ interface StudentProfileViewProps {
   onOpenNewAssessment: (studentName?: string) => void;
   onGenerateReport?: (studentName: string) => void;
   onOpenNewObservation?: () => void;
-  onSelectAssessmentResult?: () => void;
+  onSelectAssessmentResult?: (assessment: any) => void;
   setActiveTab: (tab: ActiveTab) => void;
 }
 
@@ -683,7 +683,7 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
                         <span className="text-sm font-bold text-slate-900">{scoreStr}</span>
                         {onSelectAssessmentResult && (
                           <button
-                            onClick={onSelectAssessmentResult}
+                            onClick={() => onSelectAssessmentResult(a)}
                             className="text-xs font-bold text-blue-700 hover:underline cursor-pointer"
                           >
                             View Report &rarr;

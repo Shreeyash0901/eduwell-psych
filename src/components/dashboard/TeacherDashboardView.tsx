@@ -103,6 +103,7 @@ export const TeacherDashboardView: React.FC<TeacherDashboardViewProps> = ({
       questionCount: item.questionCount || item.questions?.length || 5,
       estTime: item.estTime || '10 mins',
       questions: item.questions || [],
+      assignedAssessmentId: item.id,
     };
 
     if (onStartAssessment) {

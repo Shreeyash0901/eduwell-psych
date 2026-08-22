@@ -481,12 +481,23 @@ settingsRouter.post("/users/invite", requireRole("ADMIN"), async (req: Authentic
       });
     } catch (_) {}
 
+    let schoolName = "EduWell School";
+    try {
+      const schoolRecord = await prisma.school.findUnique({
+        where: { id: schoolId },
+        select: { name: true },
+      });
+      if (schoolRecord?.name) {
+        schoolName = schoolRecord.name;
+      }
+    } catch (_) {}
+
     return res.status(201).json({
       success: true,
       message: `Invitation generated for ${trimmedName} (${formattedRole})!`,
       inviteLink: `/join?token=${inviteToken}`,
       inviteToken,
-      schoolName: school?.name || "EduWell School",
+      schoolName,
       user: {
         id: 0,
         name: trimmedName,

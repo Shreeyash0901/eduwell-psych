@@ -104,6 +104,7 @@ export interface ObservationRecord {
   id: string;
   recordNumber: string;
   studentId: string;
+  numericStudentId?: number;
   studentName: string;
   classGroup: string;
   grade?: string;
@@ -123,13 +124,18 @@ export interface ObservationRecord {
   date: string;
   incidentTime: string;
   setting: string;
-  status: 'New' | 'Pending Review' | 'Reviewed' | 'Assessed';
+  status: 'New' | 'Pending Review' | 'Reviewed' | 'Assessed' | string;
   submitter: string;
   narrative: string;
   triggers: string;
   interventions: string;
   psychologistNotes: string;
   aiAnalysis?: string;
+  hasAssessmentStarted?: boolean;
+  assessmentProtocolTitle?: string | null;
+  assessmentStartedBy?: string | null;
+  assessmentStatus?: string | null;
+  assessmentDate?: string | null;
 }
 
 export interface AssessmentQuestionOption {
@@ -155,11 +161,29 @@ export interface AssessmentProtocol {
   questionCount: number;
   estTime: string;
   questions: AssessmentQuestion[];
+  assignedAssessmentId?: number;
+}
+
+export interface AssessmentItemResponse {
+  questionId: number;
+  questionText: string;
+  domainName?: string;
+  selectedOptionLabel?: string;
+  score?: number;
+  maxScore?: number;
+  textResponse?: string;
+  options?: {
+    label: string;
+    score: number;
+    value?: string;
+    isSelected?: boolean;
+  }[];
 }
 
 export interface AssessmentResult {
   id: string;
   studentId: string;
+  numericStudentId?: number;
   studentName: string;
   protocolTitle: string;
   date: string;
@@ -171,5 +195,7 @@ export interface AssessmentResult {
     maxScore: number;
     status: 'OPTIMAL' | 'CONCERN' | 'MONITOR';
   }[];
+  responses?: AssessmentItemResponse[];
   aiSummary?: string;
+  hasInterpretation?: boolean;
 }

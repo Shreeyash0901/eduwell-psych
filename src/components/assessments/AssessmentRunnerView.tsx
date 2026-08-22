@@ -20,12 +20,20 @@ export const AssessmentRunnerView: React.FC<AssessmentRunnerViewProps> = ({
   onCancel,
   setActiveTab,
 }) => {
+  const [activeQuestions, setActiveQuestions] = useState<any[]>(protocol.questions || []);
   const [currentStudentName, setCurrentStudentName] = useState<string>(selectedStudentName);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [assessmentId, setAssessmentId] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Sync activeQuestions if protocol changes
+  useEffect(() => {
+    if (protocol.questions && protocol.questions.length > 0) {
+      setActiveQuestions(protocol.questions);
+    }
+  }, [protocol.questions]);
 
   // Initialize assessment on mount or when protocol/student changes
   useEffect(() => {
@@ -42,11 +50,33 @@ export const AssessmentRunnerView: React.FC<AssessmentRunnerViewProps> = ({
           body: JSON.stringify({
             studentId: student.id,
             assessmentTemplateId: Number(protocol.id),
+            assessmentId: protocol.assignedAssessmentId,
           }),
         });
         const data = await res.json();
         if (data.success && !cancelled) {
           setAssessmentId(data.assessment.id);
+
+          if (
+            data.assessment.assessmentTemplate?.questions &&
+            data.assessment.assessmentTemplate.questions.length > 0
+          ) {
+            const serverQuestions = data.assessment.assessmentTemplate.questions.map((q: any) => ({
+              id: q.id,
+              text: q.questionText || q.text,
+              domain:
+                data.assessment.assessmentTemplate.domains?.find((d: any) => d.id === q.domainId)?.name || 'General',
+              options:
+                q.options && q.options.length > 0
+                  ? q.options.map((o: any) => ({
+                      id: o.id,
+                      label: o.label,
+                      score: Number(o.score),
+                    }))
+                  : undefined,
+            }));
+            setActiveQuestions(serverQuestions);
+          }
           
           const loadedAnswers: Record<number, number> = {};
           if (data.assessment.responses) {
@@ -71,7 +101,7 @@ export const AssessmentRunnerView: React.FC<AssessmentRunnerViewProps> = ({
     };
     startAssessment();
     return () => { cancelled = true; };
-  }, [protocol.id, currentStudentName, students]);
+  }, [protocol.id, protocol.assignedAssessmentId, currentStudentName, students]);
 
   // Autosave when answers change
   useEffect(() => {
@@ -97,8 +127,8 @@ export const AssessmentRunnerView: React.FC<AssessmentRunnerViewProps> = ({
     return () => clearTimeout(timeoutId);
   }, [answers, assessmentId]);
 
-  const totalQuestions = protocol.questions.length || 0;
-  const currentQuestion = protocol.questions[currentIndex];
+  const totalQuestions = activeQuestions.length || 0;
+  const currentQuestion = activeQuestions[currentIndex];
 
   const progressPercent = totalQuestions > 0 ? Math.round(((currentIndex + 1) / totalQuestions) * 100) : 0;
 
@@ -128,7 +158,7 @@ export const AssessmentRunnerView: React.FC<AssessmentRunnerViewProps> = ({
     }
     
     // Validate all required questions answered
-    const unanswered = protocol.questions.filter((q, idx) => {
+    const unanswered = activeQuestions.filter((q, idx) => {
       const qKey = q.id !== undefined ? String(q.id) : String(idx);
       return answers[qKey as any] === undefined && answers[q.id] === undefined;
     });
@@ -140,7 +170,7 @@ export const AssessmentRunnerView: React.FC<AssessmentRunnerViewProps> = ({
     setIsSubmitting(true);
     try {
       // 1. Submit responses
-      const responsesData = protocol.questions.map((q, idx) => {
+      const responsesData = activeQuestions.map((q, idx) => {
         const qKey = q.id !== undefined ? String(q.id) : String(idx);
         const chosenOptId = answers[qKey as any] !== undefined ? answers[qKey as any] : answers[q.id];
         return {
@@ -297,7 +327,7 @@ export const AssessmentRunnerView: React.FC<AssessmentRunnerViewProps> = ({
                 >
                   {isSelected && <div className="w-2 h-2 rounded-full bg-white"></div>}
                 </div>
-                <span>{opt.label || opt.text}</span>
+                <span>{opt.label || (opt as any).text}</span>
               </button>
             );
           })}

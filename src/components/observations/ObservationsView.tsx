@@ -100,9 +100,10 @@ export const ObservationsView: React.FC<ObservationsViewProps> = ({
       case 'Pending Review':
         return 'bg-amber-100 text-amber-800';
       case 'Reviewed':
-        return 'bg-amber-800 text-white';
+        return 'bg-emerald-100 text-emerald-800 border border-emerald-200';
       case 'Assessed':
-        return 'bg-slate-200 text-slate-800';
+      case 'Assessment Started':
+        return 'bg-purple-100 text-purple-800 border border-purple-200';
       default:
         return 'bg-slate-100 text-slate-700';
     }
@@ -299,11 +300,13 @@ export const ObservationsView: React.FC<ObservationsViewProps> = ({
                     <td className="px-6 py-4 text-slate-500 font-medium">{obs.date}</td>
                     <td className="px-6 py-4">
                       <span
-                        className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold shadow-sm ${getStatusBadgeClass(
-                          obs.status
+                        className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold shadow-2xs ${getStatusBadgeClass(
+                          obs.hasAssessmentStarted || obs.status === 'Assessed' ? 'Assessment Started' : obs.status
                         )}`}
                       >
-                        {obs.status}
+                        {obs.hasAssessmentStarted || obs.status === 'Assessed'
+                          ? 'Assessment Started'
+                          : obs.status}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right">

@@ -60,9 +60,6 @@ export const AssessmentSetupView: React.FC<AssessmentSetupViewProps> = ({
         const data = await res.json();
         if (data.success && data.teachers) {
           setTeachers(data.teachers);
-          if (data.teachers.length > 0) {
-            setTargetTeacherId(String(data.teachers[0].id));
-          }
         }
       } catch (err) {
         console.error('Failed to load teachers:', err);
@@ -369,7 +366,7 @@ export const AssessmentSetupView: React.FC<AssessmentSetupViewProps> = ({
                   onChange={(e) => setTargetTeacherId(e.target.value)}
                   className="w-full px-3.5 py-2.5 bg-blue-50/40 border border-blue-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 transition-all cursor-pointer"
                 >
-                  <option value="">All Class Teachers / Any Teacher</option>
+                  <option value="">Auto-assign to Student's Class Teacher (Default)</option>
                   {teachers.map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.name} ({t.classes.length > 0 ? t.classes.join(', ') : 'All Classes'})

@@ -371,7 +371,7 @@ authRouter.post("/logout", (_req: Request, res: Response) => {
  */
 authRouter.get("/invitation/verify", async (req: Request, res: Response) => {
   try {
-    const token = String(req.query.token || "");
+    const token = String(req.query.token || "").trim();
     if (!token) {
       return res.status(400).json({ success: false, error: "Invitation token is required." });
     }
@@ -385,22 +385,42 @@ authRouter.get("/invitation/verify", async (req: Request, res: Response) => {
     });
 
     if (!invitation) {
-      return res.status(404).json({ success: false, error: "Invalid or expired invitation link." });
+      return res.status(404).json({ success: false, error: "Invalid invitation link." });
+    }
+
+    if (invitation.status === "ACCEPTED") {
+      return res.status(410).json({
+        success: false,
+        error: "This invitation link has already been used and is now expired. Please sign in directly.",
+      });
     }
 
     if (invitation.status === "EXPIRED" || invitation.expiresAt < new Date()) {
-      return res.status(410).json({ success: false, error: "This invitation link has expired. Please contact your principal for a new link." });
+      return res.status(410).json({
+        success: false,
+        error: "This invitation link has expired. Please contact your principal for a new link.",
+      });
     }
 
     if (invitation.status === "REVOKED") {
       return res.status(403).json({ success: false, error: "This invitation link was revoked." });
     }
 
-    // Check if user already activated
+    // Check if an active user already exists with this email
     const existingUser = await prisma.user.findFirst({
-      where: { schoolId: invitation.schoolId, email: invitation.email },
+      where: {
+        email: { equals: invitation.email, mode: "insensitive" },
+        status: "ACTIVE",
+      },
       select: { id: true, name: true, email: true },
     });
+
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        error: `An account for "${invitation.email}" is already registered and active. Please log in directly.`,
+      });
+    }
 
     return res.json({
       success: true,
@@ -412,8 +432,8 @@ authRouter.get("/invitation/verify", async (req: Request, res: Response) => {
         schoolCode: invitation.school.code,
         invitedBy: invitation.inviter.name,
         expiresAt: invitation.expiresAt.toISOString(),
-        isExistingUser: Boolean(existingUser),
-        defaultName: existingUser?.name || "",
+        isExistingUser: false,
+        defaultName: "",
       },
     });
   } catch (error) {
@@ -435,6 +455,11 @@ authRouter.post("/invitation/accept", async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: "Token, full name, and password are required." });
     }
 
+    const trimmedName = String(fullName).trim().slice(0, 100);
+    if (!trimmedName || trimmedName.length < 2) {
+      return res.status(400).json({ success: false, error: "Please enter a valid full name (at least 2 characters)." });
+    }
+
     if (String(password).length < 6) {
       return res.status(400).json({ success: false, error: "Password must be at least 6 characters long." });
     }
@@ -449,20 +474,65 @@ authRouter.post("/invitation/accept", async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: "Invitation token not found." });
     }
 
+    // 1. Check if invitation was already used / accepted
+    if (invitation.status === "ACCEPTED") {
+      return res.status(400).json({
+        success: false,
+        error: "This invitation link has already been used and is now expired. Please proceed to the login page.",
+      });
+    }
+
     if (invitation.status === "EXPIRED" || invitation.expiresAt < new Date()) {
-      return res.status(400).json({ success: false, error: "This invitation link has expired." });
+      return res.status(400).json({ success: false, error: "This invitation link has expired. Please ask for a new invite." });
     }
 
     if (invitation.status === "REVOKED") {
       return res.status(400).json({ success: false, error: "This invitation link was revoked." });
     }
 
-    const passwordHash = await bcrypt.hash(String(password), 10);
-    const trimmedName = String(fullName).trim().slice(0, 100);
+    const normalizedEmail = invitation.email.trim().toLowerCase();
 
-    // Upsert or update User
+    // 2. Prevent duplicate email registration: Check if an active user with this email already exists
+    const existingUserWithEmail = await prisma.user.findFirst({
+      where: {
+        email: { equals: normalizedEmail, mode: "insensitive" },
+        status: "ACTIVE",
+      },
+    });
+
+    if (existingUserWithEmail) {
+      // Invalidate the invitation record since the account is already active
+      await prisma.staffInvitation.update({
+        where: { id: invitation.id },
+        data: { status: "ACCEPTED", acceptedAt: new Date(), expiresAt: new Date() },
+      });
+      return res.status(400).json({
+        success: false,
+        error: `An account with email "${normalizedEmail}" is already registered. Please log in instead.`,
+      });
+    }
+
+    // 3. Prevent duplicate username registration: Check if user name is already taken in the school
+    const existingUserWithName = await prisma.user.findFirst({
+      where: {
+        schoolId: invitation.schoolId,
+        name: { equals: trimmedName, mode: "insensitive" },
+        status: "ACTIVE",
+      },
+    });
+
+    if (existingUserWithName) {
+      return res.status(400).json({
+        success: false,
+        error: `A staff member named "${trimmedName}" is already registered at this school. Please enter your distinct full name.`,
+      });
+    }
+
+    const passwordHash = await bcrypt.hash(String(password), 10);
+
+    // Upsert or create User
     const user = await prisma.user.upsert({
-      where: { email: invitation.email },
+      where: { email: normalizedEmail },
       update: {
         name: trimmedName,
         passwordHash,
@@ -473,7 +543,7 @@ authRouter.post("/invitation/accept", async (req: Request, res: Response) => {
       create: {
         schoolId: invitation.schoolId,
         name: trimmedName,
-        email: invitation.email,
+        email: normalizedEmail,
         passwordHash,
         role: invitation.role as any,
         status: "ACTIVE",
@@ -483,12 +553,13 @@ authRouter.post("/invitation/accept", async (req: Request, res: Response) => {
       },
     });
 
-    // Mark invitation as accepted
+    // 4. Immediately expire and mark the invitation as accepted so it can never be used again
     await prisma.staffInvitation.update({
       where: { id: invitation.id },
       data: {
         status: "ACCEPTED",
         acceptedAt: new Date(),
+        expiresAt: new Date(),
       },
     });
 

@@ -18,7 +18,7 @@ interface ObservationDetailViewProps {
   refreshKey: number;
   canUpdate: boolean;
   onBack: () => void;
-  onStartAssessment: (studentName: string) => void;
+  onStartAssessment: (studentName: string, observationId?: string) => void;
   setActiveTab: (tab: ActiveTab) => void;
 }
 
@@ -63,6 +63,24 @@ export const ObservationDetailView: React.FC<ObservationDetailViewProps> = ({
   useEffect(() => {
     loadObservation();
   }, [loadObservation, refreshKey]);
+
+  const handleStartAssessmentClick = async () => {
+    if (!observation) return;
+    if (!observation.hasAssessmentStarted && observation.status !== 'Assessed') {
+      try {
+        await fetch(`/api/observations/${observation.id}`, {
+          method: 'PATCH',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'Assessed' }),
+        });
+        setObservation((prev) => (prev ? { ...prev, status: 'Assessed', hasAssessmentStarted: true } : prev));
+      } catch (e) {
+        console.warn('Could not update status to Assessed:', e);
+      }
+    }
+    onStartAssessment(observation.studentName, observation.id);
+  };
 
   const handleSave = async () => {
     if (!observation) return;
@@ -163,7 +181,7 @@ export const ObservationDetailView: React.FC<ObservationDetailViewProps> = ({
       <div className="p-8 max-w-7xl mx-auto">
         <button
           onClick={onBack}
-          className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-blue-700 transition-colors mb-4"
+          className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-blue-700 transition-colors mb-4 cursor-pointer"
         >
           <ChevronLeft className="w-3.5 h-3.5" />
           Observations &gt; Back to List
@@ -183,7 +201,7 @@ export const ObservationDetailView: React.FC<ObservationDetailViewProps> = ({
         <div>
           <button
             onClick={onBack}
-            className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-blue-700 transition-colors mb-1"
+            className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-blue-700 transition-colors mb-1 cursor-pointer"
           >
             <ChevronLeft className="w-3.5 h-3.5" />
             Observations &gt; Detail View
@@ -201,17 +219,17 @@ export const ObservationDetailView: React.FC<ObservationDetailViewProps> = ({
         <div className="flex items-center gap-3">
           <button
             onClick={onBack}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
           >
             <ChevronLeft className="w-4 h-4 text-slate-500" />
             Back to List
           </button>
           <button
-            onClick={() => onStartAssessment(observation.studentName)}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-700 text-white rounded-lg text-sm font-semibold hover:bg-blue-800 shadow-sm transition-colors"
+            onClick={handleStartAssessmentClick}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-700 text-white rounded-lg text-sm font-semibold hover:bg-blue-800 shadow-sm transition-colors cursor-pointer"
           >
             <ClipboardList className="w-4 h-4" />
-            Start Assessment
+            {observation.hasAssessmentStarted || observation.status === 'Assessed' ? 'Review / Open Assessment' : 'Start Assessment'}
           </button>
         </div>
       </div>
@@ -224,11 +242,36 @@ export const ObservationDetailView: React.FC<ObservationDetailViewProps> = ({
           <div className="bg-white border border-slate-200/80 rounded-xl p-5 shadow-xs space-y-4">
             <div className="flex items-center justify-between">
               <span className="text-sm font-bold text-slate-900">Status</span>
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">
-                {observation.status}
+              <span
+                className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                  observation.hasAssessmentStarted || observation.status === 'Assessed'
+                    ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                    : observation.status === 'Reviewed'
+                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                    : 'bg-blue-100 text-blue-800'
+                }`}
+              >
+                {observation.hasAssessmentStarted || observation.status === 'Assessed'
+                  ? 'Assessment Started'
+                  : observation.status}
               </span>
             </div>
-            {canUpdate && observation.status !== 'Reviewed' ? (
+
+            {observation.hasAssessmentStarted || observation.status === 'Assessed' ? (
+              <div className="text-xs text-emerald-800 font-semibold bg-emerald-50 border border-emerald-200 p-3 rounded-xl flex items-start gap-2.5 shadow-2xs">
+                <CheckCircle className="w-4.5 h-4.5 text-emerald-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-bold text-emerald-950">
+                    Assessment Started by {observation.assessmentStartedBy || 'Lead Psychologist'}
+                  </p>
+                  <p className="text-[11px] text-emerald-700 font-medium mt-0.5">
+                    {observation.assessmentProtocolTitle
+                      ? `Protocol: ${observation.assessmentProtocolTitle}`
+                      : 'Psychologist has initiated clinical screening for this concern.'}
+                  </p>
+                </div>
+              </div>
+            ) : canUpdate && observation.status !== 'Reviewed' ? (
               <button
                 onClick={() => handleUpdateStatus('Reviewed')}
                 className="w-full flex items-center justify-center gap-2 py-2 px-4 border border-blue-600 text-blue-700 hover:bg-blue-50 rounded-lg text-xs font-bold transition-colors cursor-pointer"
@@ -237,11 +280,13 @@ export const ObservationDetailView: React.FC<ObservationDetailViewProps> = ({
                 Mark as Reviewed
               </button>
             ) : (
-              <div className="text-xs text-emerald-700 font-semibold bg-emerald-50 p-2.5 rounded-lg flex items-center gap-2">
-                <CheckCircle className="w-4 h-4" />
-                {observation.status === 'Reviewed'
-                  ? 'Reviewed by Lead Psychologist'
-                  : 'Status updates require psychologist access'}
+              <div className="text-xs text-emerald-700 font-semibold bg-emerald-50 border border-emerald-200 p-2.5 rounded-lg flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 shrink-0" />
+                <span>
+                  {observation.status === 'Reviewed'
+                    ? 'Reviewed by Lead Psychologist'
+                    : 'Status updates require psychologist access'}
+                </span>
               </div>
             )}
           </div>

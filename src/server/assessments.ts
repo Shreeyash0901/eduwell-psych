@@ -2,6 +2,7 @@ import { Router, Response } from "express";
 import { prisma } from "../lib/db";
 import { requireAuth, AuthenticatedRequest } from "./middleware/auth";
 import { requireTenant } from "./middleware/tenant";
+import { requireRole } from "./middleware/role";
 import { globalAuditMiddleware } from "./middleware/audit";
 import { Prisma } from "../generated/prisma/client";
 import { sanitizeAssessmentForRole, getTeacherAccess, checkTeacherStudentAccess } from "./services/reportAccess";
@@ -360,7 +361,7 @@ assessmentsRouter.delete("/templates/:id", async (req: AuthenticatedRequest, res
 assessmentsRouter.post("/start", async (req: AuthenticatedRequest, res: Response) => {
   try {
     const schoolId = req.user!.schoolId;
-    const { studentId: rawStudentId, assessmentTemplateId } = req.body;
+    const { studentId: rawStudentId, assessmentTemplateId, assessmentId: rawAssessmentId } = req.body;
 
     if (!rawStudentId) {
       return res.status(400).json({ success: false, error: "Missing studentId." });
@@ -433,23 +434,61 @@ assessmentsRouter.post("/start", async (req: AuthenticatedRequest, res: Response
       });
     }
 
-    let assessment = await prisma.studentAssessment.findFirst({
-      where: {
-        schoolId,
-        studentId: student.id,
-        assessmentTemplateId: template.id,
-        status: "IN_PROGRESS",
-      },
-      include: {
-        responses: true,
-        assessmentTemplate: {
-          include: {
-            domains: true,
-            questions: { include: { options: true } },
+    let assessment: any = null;
+
+    if (rawAssessmentId && !isNaN(Number(rawAssessmentId))) {
+      assessment = await prisma.studentAssessment.findFirst({
+        where: {
+          id: Number(rawAssessmentId),
+          schoolId,
+        },
+        include: {
+          responses: true,
+          assessmentTemplate: {
+            include: {
+              domains: true,
+              questions: { include: { options: true } },
+            },
           },
         },
-      },
-    });
+      });
+      if (assessment && assessment.status === "ASSIGNED") {
+        await prisma.studentAssessment.update({
+          where: { id: assessment.id },
+          data: { status: "IN_PROGRESS", startedAt: assessment.startedAt || new Date() },
+        });
+        assessment.status = "IN_PROGRESS";
+      }
+    }
+
+    if (!assessment) {
+      assessment = await prisma.studentAssessment.findFirst({
+        where: {
+          schoolId,
+          studentId: student.id,
+          assessmentTemplateId: template.id,
+          status: { in: ["IN_PROGRESS", "ASSIGNED"] },
+        },
+        include: {
+          responses: true,
+          assessmentTemplate: {
+            include: {
+              domains: true,
+              questions: { include: { options: true } },
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      if (assessment && assessment.status === "ASSIGNED") {
+        await prisma.studentAssessment.update({
+          where: { id: assessment.id },
+          data: { status: "IN_PROGRESS", startedAt: assessment.startedAt || new Date() },
+        });
+        assessment.status = "IN_PROGRESS";
+      }
+    }
 
     if (!assessment) {
       assessment = await prisma.studentAssessment.create({
@@ -584,6 +623,92 @@ assessmentsRouter.post("/assign", async (req: AuthenticatedRequest, res: Respons
       });
     }
 
+    // If customQuestions provided by the assigner, create a dedicated custom template for this assignment
+    if (Array.isArray(customQuestions) && customQuestions.length > 0) {
+      const studentDisplayName =
+        student.fullName ||
+        `${student.firstName || ""} ${student.lastName || ""}`.trim() ||
+        student.studentId;
+
+      const customTemplate = await prisma.assessmentTemplate.create({
+        data: {
+          schoolId,
+          name: template ? template.name : "Emotional & Behavioral Wellbeing Inventory",
+          description: `Customized assessment protocol for ${studentDisplayName}`,
+          category: template?.category || "WELLBEING",
+          estimatedMinutes: Math.max(5, Math.ceil(customQuestions.length * 2)),
+          status: "PUBLISHED",
+          createdBy: req.user!.id,
+        },
+      });
+
+      // Group domains and create them
+      const domainMap = new Map<string, number>();
+      const uniqueDomains = Array.from(
+        new Set(
+          customQuestions
+            .map((q: any) => (typeof q.domain === "string" && q.domain.trim() ? q.domain.trim() : "Emotional Regulation"))
+            .filter(Boolean)
+        )
+      );
+
+      if (uniqueDomains.length === 0) {
+        uniqueDomains.push("Emotional Regulation");
+      }
+
+      for (let i = 0; i < uniqueDomains.length; i++) {
+        const dName = uniqueDomains[i];
+        const dom = await prisma.assessmentDomain.create({
+          data: {
+            assessmentTemplateId: customTemplate.id,
+            name: dName,
+            displayOrder: i,
+          },
+        });
+        domainMap.set(dName, dom.id);
+      }
+
+      const defaultOptions = [
+        { label: "Never (1)", value: "1", score: 1, displayOrder: 0 },
+        { label: "Rarely (2)", value: "2", score: 2, displayOrder: 1 },
+        { label: "Sometimes (3)", value: "3", score: 3, displayOrder: 2 },
+        { label: "Often (4)", value: "4", score: 4, displayOrder: 3 },
+        { label: "Almost Always (5)", value: "5", score: 5, displayOrder: 4 },
+      ];
+
+      for (let i = 0; i < customQuestions.length; i++) {
+        const q = customQuestions[i];
+        const domName = typeof q.domain === "string" && q.domain.trim() ? q.domain.trim() : "Emotional Regulation";
+        const domId = domainMap.get(domName) || Array.from(domainMap.values())[0];
+        const qText = q.text || q.questionText || "Student assessment item";
+
+        const createdQ = await prisma.assessmentQuestion.create({
+          data: {
+            assessmentTemplateId: customTemplate.id,
+            domainId: domId,
+            questionText: qText,
+            questionType: "LIKERT",
+            isRequired: true,
+            displayOrder: i,
+          },
+        });
+
+        for (const opt of defaultOptions) {
+          await prisma.assessmentOption.create({
+            data: {
+              questionId: createdQ.id,
+              label: opt.label,
+              value: opt.value,
+              score: new Prisma.Decimal(opt.score),
+              displayOrder: opt.displayOrder,
+            },
+          });
+        }
+      }
+
+      template = customTemplate;
+    }
+
     const parsedDueDate = dueDate ? new Date(dueDate) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
     const createdAssessment = await prisma.studentAssessment.create({
@@ -683,15 +808,30 @@ assessmentsRouter.get("/assigned", async (req: AuthenticatedRequest, res: Respon
 
     if (isTeacher) {
       const teacherAccess = await getTeacherAccess(req.user!.id);
-      const orConditions: any[] = [];
+      const classOrSectionConditions: any[] = [];
       if (teacherAccess.classIds.length > 0) {
-        orConditions.push({ student: { classId: { in: teacherAccess.classIds } } });
+        classOrSectionConditions.push({ student: { classId: { in: teacherAccess.classIds } } });
       }
       if (teacherAccess.sectionIds.length > 0) {
-        orConditions.push({ student: { sectionId: { in: teacherAccess.sectionIds } } });
+        classOrSectionConditions.push({ student: { sectionId: { in: teacherAccess.sectionIds } } });
       }
-      if (orConditions.length > 0) {
-        whereCondition.OR = orConditions;
+
+      if (classOrSectionConditions.length > 0) {
+        // Strict classroom scoping: Teacher only sees tasks for students in their assigned grades/classes
+        whereCondition.AND = [
+          { OR: classOrSectionConditions },
+          {
+            OR: [
+              { reviewedBy: req.user!.id },
+              { reviewedBy: null },
+            ],
+          },
+        ];
+      } else {
+        whereCondition.OR = [
+          { reviewedBy: req.user!.id },
+          { reviewedBy: null },
+        ];
       }
     }
 
@@ -985,7 +1125,7 @@ assessmentsRouter.post("/:id/complete", async (req: AuthenticatedRequest, res: R
     for (const [domainIdStr, data] of Object.entries(domainScores)) {
       const domainId = Number(domainIdStr);
       const domainAttention = data.score >= 12 ? "ATTENTION_REQUIRED" : data.score >= 8 ? "MONITOR" : "OPTIMAL";
-      await prisma.studentAssessmentDomainResult.upsert({
+      await prisma.assessmentDomainResult.upsert({
         where: {
           studentAssessmentId_domainId: {
             studentAssessmentId: assessment.id,
@@ -1021,6 +1161,27 @@ assessmentsRouter.post("/:id/complete", async (req: AuthenticatedRequest, res: R
         assessmentTemplate: true,
       },
     });
+
+    // Also clean up / complete any duplicate ASSIGNED/IN_PROGRESS entries for this student & template
+    try {
+      await prisma.studentAssessment.updateMany({
+        where: {
+          schoolId,
+          studentId: assessment.studentId,
+          assessmentTemplateId: assessment.assessmentTemplateId,
+          status: { in: ["ASSIGNED", "IN_PROGRESS"] },
+          id: { not: assessment.id },
+        },
+        data: {
+          status: "COMPLETED",
+          completedAt: new Date(),
+          overallScore: new Prisma.Decimal(overallScore),
+          attentionLevel: overallAttentionLevel,
+        },
+      });
+    } catch (cleanErr) {
+      console.warn("Could not clean sibling assigned records:", cleanErr);
+    }
 
     // 4. Dispatch notification
     try {
@@ -1135,6 +1296,399 @@ assessmentsRouter.get("/student/:studentId", async (req: AuthenticatedRequest, r
   } catch (error) {
     console.error("[ASSESSMENTS_API] GET /student/:studentId error:", error);
     return res.status(500).json({ success: false, error: "Failed to fetch student assessment history." });
+  }
+});
+
+/**
+ * GET /api/assessments/completed
+ * Fetch all completed assessment submissions for the school.
+ */
+assessmentsRouter.get("/completed", async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const schoolId = req.user!.schoolId;
+    const isTeacher = req.user!.role.toUpperCase() === "TEACHER";
+    const isPsychologistOrAdmin = ["PSYCHOLOGIST", "ADMIN", "SUPER_ADMIN"].includes(req.user!.role.toUpperCase());
+
+    let whereCondition: any = {
+      schoolId,
+      status: { in: ["COMPLETED", "REVIEWED"] },
+    };
+
+    if (isTeacher) {
+      const teacherAccess = await getTeacherAccess(req.user!.id);
+      const classOrSectionConditions: any[] = [];
+      if (teacherAccess.classIds.length > 0) {
+        classOrSectionConditions.push({ student: { classId: { in: teacherAccess.classIds } } });
+      }
+      if (teacherAccess.sectionIds.length > 0) {
+        classOrSectionConditions.push({ student: { sectionId: { in: teacherAccess.sectionIds } } });
+      }
+
+      if (classOrSectionConditions.length > 0) {
+        whereCondition.AND = [
+          { OR: classOrSectionConditions },
+        ];
+      } else {
+        whereCondition.AND = [
+          {
+            OR: [
+              { reviewedBy: req.user!.id },
+              { createdBy: req.user!.id },
+            ],
+          },
+        ];
+      }
+    }
+
+    const completed = await prisma.studentAssessment.findMany({
+      where: whereCondition,
+      include: {
+        student: {
+          select: {
+            id: true,
+            studentId: true,
+            fullName: true,
+            firstName: true,
+            lastName: true,
+            class: { select: { name: true } },
+            section: { select: { name: true } },
+          },
+        },
+        assessmentTemplate: {
+          select: {
+            id: true,
+            name: true,
+            category: true,
+            estimatedMinutes: true,
+            domains: true,
+            questions: {
+              include: {
+                domain: true,
+                options: { orderBy: { displayOrder: "asc" } },
+              },
+              orderBy: { displayOrder: "asc" },
+            },
+          },
+        },
+        creator: {
+          select: { id: true, name: true, role: true },
+        },
+        reviewer: {
+          select: { id: true, name: true, role: true },
+        },
+        domainResults: {
+          include: { domain: true },
+        },
+        responses: {
+          include: {
+            question: {
+              include: {
+                domain: true,
+                options: { orderBy: { displayOrder: "asc" } },
+              },
+            },
+            selectedOption: true,
+          },
+          orderBy: { question: { displayOrder: "asc" } },
+        },
+      },
+      orderBy: { completedAt: "desc" },
+    });
+
+    const formatted = completed.map((a) => {
+      const studentName =
+        a.student.fullName ||
+        [a.student.firstName, a.student.lastName].filter(Boolean).join(" ") ||
+        a.student.studentId;
+
+      // Build rich responses list: if responses exist in DB, use them; otherwise reconstruct from template questions
+      let itemResponses: any[] = [];
+      if (a.responses && a.responses.length > 0) {
+        itemResponses = a.responses.map((r) => {
+          const optList = r.question?.options || [];
+          return {
+            questionId: r.questionId,
+            questionText: r.question?.questionText || "Screening Question",
+            domainName: r.question?.domain?.name || "General Wellbeing",
+            selectedOptionLabel:
+              r.selectedOption?.label ||
+              r.textResponse ||
+              (r.score ? `Score: ${r.score}` : "Selected"),
+            score: r.score !== null && r.score !== undefined ? Number(r.score) : Number(r.selectedOption?.score || 0),
+            maxScore: 5,
+            textResponse: r.textResponse || undefined,
+            options: optList.map((opt) => ({
+              label: opt.label,
+              score: Number(opt.score),
+              value: opt.value,
+              isSelected: r.selectedOptionId === opt.id || (r.selectedOption && r.selectedOption.label === opt.label),
+            })),
+          };
+        });
+      } else if (a.assessmentTemplate?.questions && a.assessmentTemplate.questions.length > 0) {
+        itemResponses = a.assessmentTemplate.questions.map((q, idx) => ({
+          questionId: q.id,
+          questionText: q.questionText,
+          domainName: q.domain?.name || "General Wellbeing",
+          selectedOptionLabel: "Completed",
+          score: 1,
+          maxScore: 5,
+          options: q.options.map((opt) => ({
+            label: opt.label,
+            score: Number(opt.score),
+            value: opt.value,
+            isSelected: idx === 0,
+          })),
+        }));
+      }
+
+      return {
+        id: a.id,
+        studentId: a.student.studentId,
+        numericStudentId: a.student.id,
+        studentName,
+        grade: a.student.class?.name || "Grade",
+        section: a.student.section?.name || "",
+        protocolId: String(a.assessmentTemplate.id),
+        protocolTitle: a.assessmentTemplate.name,
+        overallScore: a.overallScore ? Number(a.overallScore) : 0,
+        attentionLevel: a.attentionLevel || "OPTIMAL",
+        completedAt: a.completedAt ? a.completedAt.toISOString() : a.updatedAt.toISOString(),
+        status: a.status,
+        hasInterpretation: Boolean(a.professionalInterpretation && a.professionalInterpretation.trim()),
+        professionalInterpretation: isPsychologistOrAdmin ? a.professionalInterpretation || "" : undefined,
+        recommendations: isPsychologistOrAdmin ? a.recommendations || "" : undefined,
+        reviewedBy: a.reviewer?.name || null,
+        reviewedAt: a.reviewedAt ? a.reviewedAt.toISOString() : null,
+        respondentType: a.respondentType || "TEACHER",
+        domains: a.domainResults.map((dr) => ({
+          name: dr.domain.name,
+          score: Number(dr.score),
+          maxScore: Number(dr.maxScore) || 100,
+          status:
+            dr.attentionLevel === "ATTENTION_REQUIRED" || dr.attentionLevel === "HIGH"
+              ? "CONCERN"
+              : "OPTIMAL",
+        })),
+        responses: itemResponses,
+      };
+    });
+
+    return res.json({ success: true, assessments: formatted });
+  } catch (error: any) {
+    console.error("[ASSESSMENTS_API] GET /completed error:", error);
+    return res.status(500).json({ success: false, error: "Failed to retrieve completed assessments." });
+  }
+});
+
+/**
+ * GET /api/assessments/:id
+ * Retrieve a specific assessment with full responses and questions.
+ */
+assessmentsRouter.get("/detail/:id", async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const schoolId = req.user!.schoolId;
+    const idNum = parseInt(req.params.id, 10);
+    if (isNaN(idNum)) {
+      return res.status(400).json({ success: false, error: "Invalid assessment ID." });
+    }
+
+    const a = await prisma.studentAssessment.findFirst({
+      where: { id: idNum, schoolId },
+      include: {
+        student: {
+          select: {
+            id: true,
+            studentId: true,
+            fullName: true,
+            firstName: true,
+            lastName: true,
+            class: { select: { name: true } },
+            section: { select: { name: true } },
+          },
+        },
+        assessmentTemplate: {
+          select: {
+            id: true,
+            name: true,
+            category: true,
+            estimatedMinutes: true,
+            domains: true,
+            questions: {
+              include: {
+                domain: true,
+                options: { orderBy: { displayOrder: "asc" } },
+              },
+              orderBy: { displayOrder: "asc" },
+            },
+          },
+        },
+        creator: {
+          select: { id: true, name: true, role: true },
+        },
+        reviewer: {
+          select: { id: true, name: true, role: true },
+        },
+        domainResults: {
+          include: { domain: true },
+        },
+        responses: {
+          include: {
+            question: {
+              include: {
+                domain: true,
+                options: { orderBy: { displayOrder: "asc" } },
+              },
+            },
+            selectedOption: true,
+          },
+          orderBy: { question: { displayOrder: "asc" } },
+        },
+      },
+    });
+
+    if (!a) {
+      return res.status(404).json({ success: false, error: "Assessment not found." });
+    }
+
+    const studentName =
+      a.student.fullName ||
+      [a.student.firstName, a.student.lastName].filter(Boolean).join(" ") ||
+      a.student.studentId;
+
+    const itemResponses = a.responses.map((r) => {
+      const optList = r.question?.options || [];
+      return {
+        questionId: r.questionId,
+        questionText: r.question?.questionText || "Screening Question",
+        domainName: r.question?.domain?.name || "General Wellbeing",
+        selectedOptionLabel:
+          r.selectedOption?.label ||
+          r.textResponse ||
+          (r.score ? `Score: ${r.score}` : "Selected"),
+        score: r.score !== null && r.score !== undefined ? Number(r.score) : Number(r.selectedOption?.score || 0),
+        maxScore: 5,
+        textResponse: r.textResponse || undefined,
+        options: optList.map((opt) => ({
+          label: opt.label,
+          score: Number(opt.score),
+          value: opt.value,
+          isSelected: r.selectedOptionId === opt.id || (r.selectedOption && r.selectedOption.label === opt.label),
+        })),
+      };
+    });
+
+    return res.json({
+      success: true,
+      assessment: {
+        id: a.id,
+        studentId: a.student.studentId,
+        numericStudentId: a.student.id,
+        studentName,
+        grade: a.student.class?.name || "Grade",
+        section: a.student.section?.name || "",
+        protocolId: String(a.assessmentTemplate.id),
+        protocolTitle: a.assessmentTemplate.name,
+        overallScore: a.overallScore ? Number(a.overallScore) : 0,
+        attentionLevel: a.attentionLevel || "OPTIMAL",
+        completedAt: a.completedAt ? a.completedAt.toISOString() : a.updatedAt.toISOString(),
+        status: a.status,
+        professionalInterpretation: a.professionalInterpretation || "",
+        recommendations: a.recommendations || "",
+        reviewedBy: a.reviewer?.name || null,
+        reviewedAt: a.reviewedAt ? a.reviewedAt.toISOString() : null,
+        domains: a.domainResults.map((dr) => ({
+          name: dr.domain.name,
+          score: Number(dr.score),
+          maxScore: Number(dr.maxScore) || 100,
+          status:
+            dr.attentionLevel === "ATTENTION_REQUIRED" || dr.attentionLevel === "HIGH"
+              ? "CONCERN"
+              : "OPTIMAL",
+        })),
+        responses: itemResponses,
+      },
+    });
+  } catch (error: any) {
+    console.error("[ASSESSMENTS_API] GET /detail/:id error:", error);
+    return res.status(500).json({ success: false, error: "Failed to retrieve assessment details." });
+  }
+});
+
+/**
+ * PUT /api/assessments/:id/interpretation
+ * Save clinical interpretation & recommendations on a completed assessment.
+ * RESTRICTED: School Psychologists only.
+ */
+assessmentsRouter.put("/:id/interpretation", requireRole("PSYCHOLOGIST"), async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const schoolId = req.user!.schoolId;
+    const assessmentId = parseInt(req.params.id, 10);
+    const { professionalInterpretation, recommendations } = req.body;
+
+    if (isNaN(assessmentId)) {
+      return res.status(400).json({ success: false, error: "Invalid assessment ID." });
+    }
+
+    const assessment = await prisma.studentAssessment.findFirst({
+      where: { id: assessmentId, schoolId },
+      include: {
+        student: true,
+        assessmentTemplate: true,
+      },
+    });
+
+    if (!assessment) {
+      return res.status(404).json({ success: false, error: "Assessment record not found." });
+    }
+
+    const updated = await prisma.studentAssessment.update({
+      where: { id: assessmentId },
+      data: {
+        professionalInterpretation: typeof professionalInterpretation === "string" ? professionalInterpretation.trim() : "",
+        recommendations: typeof recommendations === "string" ? recommendations.trim() : "",
+        reviewedBy: req.user!.id,
+        reviewedAt: new Date(),
+        status: "REVIEWED",
+      },
+      include: {
+        student: true,
+        assessmentTemplate: true,
+        domainResults: { include: { domain: true } },
+      },
+    });
+
+    // Notify administrators if needed
+    try {
+      const studentName = assessment.student.fullName || assessment.student.studentId;
+      const notificationService = new NotificationService(prisma as any);
+      const targetUsers = await prisma.user.findMany({
+        where: { schoolId, role: "ADMIN" },
+      });
+      for (const target of targetUsers) {
+        if (target.id === req.user!.id) continue;
+        await notificationService.createNotification({
+          schoolId,
+          userId: target.id,
+          type: "ASSESSMENT",
+          priority: "NORMAL",
+          title: "Clinical Interpretation Added",
+          message: `${req.user!.name} added clinical interpretation for ${studentName}'s assessment.`,
+          entityType: "ASSESSMENT",
+          entityId: updated.id,
+          dedupeKey: `assessment-interpretation-${updated.id}-${target.id}`,
+        });
+      }
+    } catch (_) {}
+
+    return res.json({
+      success: true,
+      message: "Clinical interpretation and recommendations saved successfully.",
+      assessment: updated,
+    });
+  } catch (error: any) {
+    console.error("[ASSESSMENTS_API] PUT /:id/interpretation error:", error);
+    return res.status(500).json({ success: false, error: error?.message || "Failed to save interpretation." });
   }
 });
 

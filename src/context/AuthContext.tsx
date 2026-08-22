@@ -34,28 +34,35 @@ export function getRoleTitle(role: string): string {
   }
 }
 
-export function getRoleAvatar(role: string, email?: string): string {
-  if (email && (email.includes('jenkins') || email.includes('psych'))) {
-    return 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=120';
+export function getUserAvatar(name?: string, role?: string, email?: string): string {
+  const displayName = name || email?.split('@')[0] || role || 'User';
+  const seed = displayName.trim();
+
+  const palette = [
+    '2563eb', // Blue
+    '7c3aed', // Purple
+    '059669', // Emerald Green
+    'd97706', // Amber
+    'e11d48', // Rose
+    '0891b2', // Cyan
+    '4f46e5', // Indigo
+    '0d9488', // Teal
+    'ea580c', // Orange
+    '475569', // Slate
+  ];
+
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = seed.charCodeAt(i) + ((hash << 5) - hash);
   }
-  if (email && (email.includes('mercer') || email.includes('admin') || email.includes('chen'))) {
-    return 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=120';
-  }
-  switch (role.toLowerCase()) {
-    case 'psychologist':
-      return 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=120';
-    case 'teacher':
-      return 'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&q=80&w=120';
-    case 'parent':
-      return 'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&q=80&w=120';
-    case 'admin':
-      return 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=120';
-    case 'super_admin':
-      return 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&q=80&w=120';
-    default:
-      return 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=120';
-  }
+  const colorIndex = Math.abs(hash) % palette.length;
+  const bg = palette[colorIndex];
+
+  const encodedName = encodeURIComponent(displayName);
+  return `https://ui-avatars.com/api/?name=${encodedName}&background=${bg}&color=fff&bold=true&size=128&rounded=true`;
 }
+
+export const getRoleAvatar = (role: string, email?: string) => getUserAvatar(undefined, role, email);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserSession | null>(null);
@@ -80,7 +87,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             email: data.user.email,
             role: data.user.role as UserRole,
             roleTitle: getRoleTitle(data.user.role),
-            avatarUrl: getRoleAvatar(data.user.role, data.user.email),
+            avatarUrl: getUserAvatar(data.user.name, data.user.role, data.user.email),
             schoolName: data.user.schoolName || 'Westside Academy',
           });
         } else {
@@ -134,7 +141,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         email: data.user.email,
         role: data.user.role as UserRole,
         roleTitle: getRoleTitle(data.user.role),
-        avatarUrl: getRoleAvatar(data.user.role, data.user.email),
+        avatarUrl: getUserAvatar(data.user.name, data.user.role, data.user.email),
         schoolName: data.user.schoolName || 'Westside Academy',
       };
 
@@ -177,7 +184,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         email: data.user.email,
         role: data.user.role as UserRole,
         roleTitle: getRoleTitle(data.user.role),
-        avatarUrl: getRoleAvatar(data.user.role, data.user.email),
+        avatarUrl: getUserAvatar(data.user.name, data.user.role, data.user.email),
         schoolName: data.user.schoolName || 'Westside Academy',
       };
 

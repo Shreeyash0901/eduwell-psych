@@ -224,6 +224,7 @@ function MainApplication() {
   const [observationCount, setObservationCount] = useState<number>(0);
   const [selectedProtocol, setSelectedProtocol] = useState<AssessmentProtocol>(DEFAULT_PROTOCOL);
   const [activeAssessmentStudent, setActiveAssessmentStudent] = useState<string>('');
+  const [selectedAssessmentForInterpretationId, setSelectedAssessmentForInterpretationId] = useState<string | number | null>(null);
   const [assessmentResult, setAssessmentResult] = useState<AssessmentResult | null>(null);
   const [psychologistReportData, setPsychologistReportData] = useState<{
     studentName?: string;
@@ -265,9 +266,12 @@ function MainApplication() {
     };
   }, [observationRefreshKey, activeTab]);
 
-  const handleStartAssessmentFromObs = (studentName: string) => {
+  const handleStartAssessmentFromObs = (studentName: string, observationId?: string | number) => {
     setActiveAssessmentStudent(studentName);
     setSelectedProtocol(protocols[0]);
+    if (observationId) {
+      setObservationRefreshKey((k) => k + 1);
+    }
     setActiveTab('assessment_setup');
   };
 
@@ -342,6 +346,33 @@ function MainApplication() {
       ];
     }
 
+    const itemResponses = selectedProtocol?.questions
+      ? selectedProtocol.questions.map((q) => {
+          const selectedScore = answers[q.id] || 1;
+          const opt = q.options?.find((o) => Number(o.score) === selectedScore || Number(o.value) === selectedScore);
+          return {
+            questionId: q.id,
+            questionText: q.text,
+            domainName: q.domain,
+            selectedOptionLabel: opt?.label || (opt as any)?.text || `Option (${selectedScore})`,
+            score: selectedScore,
+            maxScore: 5,
+            options: (q.options || [
+              { label: 'Never (1)', score: 1, value: '1' },
+              { label: 'Rarely (2)', score: 2, value: '2' },
+              { label: 'Sometimes (3)', score: 3, value: '3' },
+              { label: 'Often (4)', score: 4, value: '4' },
+              { label: 'Almost Always (5)', score: 5, value: '5' },
+            ]).map((o: any) => ({
+              label: o.label || o.text,
+              score: Number(o.score),
+              value: String(o.value || o.score),
+              isSelected: Number(o.score) === selectedScore,
+            })),
+          };
+        })
+      : [];
+
     const newResult: AssessmentResult = {
       id: serverAssessment ? `res-${serverAssessment.id}` : `res-${Date.now()}`,
       studentId: student?.studentId || 'STU-4055',
@@ -355,6 +386,7 @@ function MainApplication() {
       overallScore,
       statusTag: 'Screening Result',
       domains: domainsList,
+      responses: itemResponses,
     };
 
     setAssessmentResult(newResult);
@@ -520,6 +552,7 @@ function MainApplication() {
           {activeTab === 'assessments' && (
             <AssessmentsView
               protocols={protocols}
+              userRole={currentUser?.role}
               onStartProtocol={(prot, studentName) => {
                 setSelectedProtocol(prot);
                 if (studentName) {
@@ -531,6 +564,31 @@ function MainApplication() {
               }}
               setActiveTab={setActiveTab}
               onRefreshProtocols={fetchProtocols}
+              onSelectForInterpretation={(item) => {
+                setSelectedAssessmentForInterpretationId(item.id);
+                setActiveAssessmentStudent(item.studentName);
+                setActiveTab('psychologist_interpretation');
+              }}
+              onSelectAssessmentResult={(item) => {
+                const resObj: AssessmentResult = {
+                  id: String(item.id),
+                  studentId: item.studentId,
+                  studentName: item.studentName,
+                  protocolTitle: item.protocolTitle,
+                  date: new Date(item.completedAt).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                  }),
+                  overallScore: item.overallScore,
+                  statusTag: 'Screening Result',
+                  domains: item.domains as any,
+                  responses: item.responses,
+                  aiSummary: item.professionalInterpretation,
+                };
+                setAssessmentResult(resObj);
+                setActiveTab('assessment_result');
+              }}
             />
           )}
 
@@ -562,10 +620,20 @@ function MainApplication() {
 
           {activeTab === 'assessment_result' && (
             <AssessmentResultView
-              result={assessmentResult}
+              result={assessmentResult!}
               userRole={currentUser?.role}
               onBack={() => setActiveTab('assessments')}
               setActiveTab={setActiveTab}
+              onOpenInterpretation={(assessmentId, studentName) => {
+                if (assessmentId) {
+                  const numericId = parseInt(String(assessmentId).replace(/\D/g, ''), 10);
+                  setSelectedAssessmentForInterpretationId(!isNaN(numericId) ? numericId : assessmentId);
+                }
+                if (studentName) {
+                  setActiveAssessmentStudent(studentName);
+                }
+                setActiveTab('psychologist_interpretation');
+              }}
             />
           )}
 
@@ -636,7 +704,8 @@ function MainApplication() {
               defaultEmptyStudent;
             return (
               <PsychologistInterpretationView
-                studentName={activeStudent.name}
+                assessmentId={selectedAssessmentForInterpretationId}
+                studentName={activeAssessmentStudent || activeStudent.name}
                 recordNumber={activeStudent.studentId}
                 grade={activeStudent.grade}
                 assessmentDate={
@@ -648,7 +717,8 @@ function MainApplication() {
                   })
                 }
                 student={activeStudent}
-                assessmentResult={assessmentResult}
+                assessmentResult={assessmentResult || undefined}
+                userRole={currentUser?.role}
                 onGenerateReport={(data) => {
                   setPsychologistReportData(data);
                   setActiveTab('student_report_preview');
@@ -694,7 +764,86 @@ function MainApplication() {
                 setActiveTab('student_report_preview');
               }}
               onOpenNewObservation={() => setIsNewObservationOpen(true)}
-              onSelectAssessmentResult={() => setActiveTab('assessment_result')}
+              onSelectAssessmentResult={(assessment) => {
+                if (assessment) {
+                  const student =
+                    selectedProfileStudent ||
+                    students.find((s) => s.id === assessment.studentId || s.studentId === assessment.studentId);
+                  const studentName =
+                    student?.fullName ||
+                    student?.name ||
+                    selectedProfileStudent?.fullName ||
+                    selectedProfileStudent?.name ||
+                    'Alex Morgan';
+                  const overallScore = Number(assessment.overallScore) || 85;
+                  const dateStr = assessment.completedAt
+                    ? new Date(assessment.completedAt).toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                      })
+                    : new Date(assessment.createdAt || Date.now()).toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                      });
+
+                  let domainsList: any[] = [];
+                  if (assessment.domainResults && assessment.domainResults.length > 0) {
+                    domainsList = assessment.domainResults.map((dr: any) => ({
+                      name: dr.domain?.name || 'General Domain',
+                      score: Number(dr.score),
+                      maxScore: Number(dr.maxScore) || 100,
+                      status:
+                        dr.attentionLevel === 'High' || dr.attentionLevel === 'ATTENTION_REQUIRED'
+                          ? 'CONCERN'
+                          : 'OPTIMAL',
+                    }));
+                  } else {
+                    domainsList = [
+                      {
+                        name: 'Emotional Regulation',
+                        score: Math.max(30, overallScore - 15),
+                        maxScore: 100,
+                        status: overallScore < 60 ? 'CONCERN' : 'OPTIMAL',
+                      },
+                      {
+                        name: 'Social Interaction',
+                        score: Math.min(95, overallScore + 10),
+                        maxScore: 100,
+                        status: 'OPTIMAL',
+                      },
+                      {
+                        name: 'Self Confidence',
+                        score: overallScore,
+                        maxScore: 100,
+                        status: 'OPTIMAL',
+                      },
+                      {
+                        name: 'School Adjustment',
+                        score: Math.min(98, overallScore + 18),
+                        maxScore: 100,
+                        status: 'OPTIMAL',
+                      },
+                    ];
+                  }
+
+                  const resObj: AssessmentResult = {
+                    id: String(assessment.id),
+                    studentId: student?.studentId || selectedProfileStudent?.studentId || 'STU-1001',
+                    studentName,
+                    protocolTitle: assessment.assessmentTemplate?.name || 'Emotional & Behavioral Wellbeing Inventory',
+                    date: dateStr,
+                    overallScore,
+                    statusTag: assessment.status === 'COMPLETED' ? 'Screening Result' : 'Screening In Progress',
+                    domains: domainsList,
+                    responses: assessment.responses,
+                    aiSummary: assessment.professionalInterpretation || undefined,
+                  };
+                  setAssessmentResult(resObj);
+                }
+                setActiveTab('assessment_result');
+              }}
               setActiveTab={setActiveTab}
             />
           )}

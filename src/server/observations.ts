@@ -115,9 +115,35 @@ const observationInclude = {
       lastName: true,
       class: { select: { id: true, name: true } },
       section: { select: { id: true, name: true } },
+      studentAssessments: {
+        select: {
+          id: true,
+          status: true,
+          createdAt: true,
+          startedAt: true,
+          completedAt: true,
+          assessmentTemplate: { select: { name: true } },
+          creator: { select: { name: true, role: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 1,
+      },
     },
   },
   submitter: { select: { id: true, name: true } },
+  studentAssessments: {
+    select: {
+      id: true,
+      status: true,
+      createdAt: true,
+      startedAt: true,
+      completedAt: true,
+      assessmentTemplate: { select: { name: true } },
+      creator: { select: { name: true, role: true } },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 1,
+  },
 } as const;
 
 // Map a DB observation row into the safe UI shape. Psychologist notes and AI
@@ -135,10 +161,27 @@ function toSafeObservation(obs: any, role: string): any {
     ? `${narrative}\n\nAdditional Notes: ${obs.additionalComments}`
     : narrative;
 
+  // Check if an assessment is linked to this observation directly, or for this student
+  const linkedAssessment =
+    (obs.studentAssessments && obs.studentAssessments.length > 0 && obs.studentAssessments[0]) ||
+    (obs.student?.studentAssessments && obs.student?.studentAssessments.length > 0 && obs.student?.studentAssessments[0]) ||
+    null;
+
+  const hasAssessmentStarted =
+    Boolean(linkedAssessment) ||
+    obs.status === "Assessed" ||
+    obs.status === "ASSESSED";
+
+  const assessmentProtocolTitle = linkedAssessment?.assessmentTemplate?.name || null;
+  const assessmentStartedBy = linkedAssessment?.creator?.name || "Lead Psychologist";
+  const assessmentStatus = linkedAssessment?.status || (hasAssessmentStarted ? "IN_PROGRESS" : null);
+  const assessmentDate = linkedAssessment?.startedAt || linkedAssessment?.createdAt || null;
+
   return {
     id: String(obs.id),
     recordNumber: recordNumberFor(obs),
     studentId: obs.student?.studentId || "",
+    numericStudentId: obs.student?.id,
     studentName,
     classGroup: obs.student?.section?.name || obs.student?.class?.name || "",
     grade: obs.student?.class?.name || "",
@@ -147,11 +190,16 @@ function toSafeObservation(obs: any, role: string): any {
     date: formatDate(obs.observedAt),
     incidentTime: obs.incidentTime || "",
     setting: obs.setting || "",
-    status: toStatusLabel(obs.status),
+    status: hasAssessmentStarted ? "Assessed" : toStatusLabel(obs.status),
     submitter: obs.submitterName || obs.submitter?.name || "",
     narrative: fullNarrative,
     triggers: obs.triggers || "",
     interventions: obs.interventions || "",
+    hasAssessmentStarted,
+    assessmentProtocolTitle,
+    assessmentStartedBy,
+    assessmentStatus,
+    assessmentDate: assessmentDate ? formatDate(assessmentDate) : null,
     psychologistNotes: isPsychologist ? obs.psychologistNotes || "" : "",
     aiAnalysis: isPsychologist ? obs.aiAnalysis || undefined : undefined,
   };
@@ -194,6 +242,7 @@ observationsRouter.get("/", async (req: AuthenticatedRequest, res: Response) => 
     if (isTeacher) {
       const scope = await teacherStudentScope(req);
       where.student = scope.OR ? { OR: scope.OR } : { id: -1 };
+      where.submittedBy = req.user!.id;
     }
 
     if (sourceParam) {
@@ -293,6 +342,7 @@ observationsRouter.get("/:id", async (req: AuthenticatedRequest, res: Response) 
     if (isTeacher) {
       const scope = await teacherStudentScope(req);
       where.student = scope.OR ? { OR: scope.OR } : { id: -1 };
+      where.submittedBy = req.user!.id;
     }
 
     const observation = await prisma.studentObservation.findFirst({

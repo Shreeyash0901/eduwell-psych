@@ -35,7 +35,7 @@ interface AcceptInviteViewProps {
 }
 
 export const AcceptInviteView: React.FC<AcceptInviteViewProps> = ({ onSuccess }) => {
-  const { checkSession } = useAuth();
+  const { logout, checkAuth } = useAuth();
 
   const [token, setToken] = useState<string>('');
   const [invite, setInvite] = useState<InviteDetails | null>(null);
@@ -155,10 +155,24 @@ export const AcceptInviteView: React.FC<AcceptInviteViewProps> = ({ onSuccess })
     }
   };
 
+  const handleEnterWorkspace = async () => {
+    try {
+      await checkAuth();
+    } catch (_) {}
+    const dest = createdUserData?.role === 'TEACHER' ? 'teacher_dashboard' : 'dashboard';
+    window.location.hash = `#${dest}`;
+    if (onSuccess) {
+      onSuccess();
+    } else {
+      window.location.reload();
+    }
+  };
+
   const handleProceedToLogin = async () => {
-    await checkSession();
-    // Redirect to login view or dashboard
-    window.location.hash = '#login';
+    try {
+      await logout();
+    } catch (_) {}
+    window.location.href = window.location.origin + '/#login';
     window.location.reload();
   };
 
@@ -244,13 +258,22 @@ export const AcceptInviteView: React.FC<AcceptInviteViewProps> = ({ onSuccess })
             </div>
           </div>
 
-          <button
-            onClick={handleProceedToLogin}
-            className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer"
-          >
-            <span>Proceed to Login Page</span>
-            <LogIn className="w-4 h-4" />
-          </button>
+          <div className="space-y-2 pt-2">
+            <button
+              onClick={handleEnterWorkspace}
+              className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer"
+            >
+              <span>Enter Workspace Directly</span>
+              <Sparkles className="w-4 h-4" />
+            </button>
+            <button
+              onClick={handleProceedToLogin}
+              className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer"
+            >
+              <span>Proceed to Login Page</span>
+              <LogIn className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
     );
