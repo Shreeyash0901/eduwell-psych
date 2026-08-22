@@ -23,10 +23,20 @@ dotenv.config();
 
 let __filename = "";
 let __dirname = process.cwd();
-if (import.meta.url) {
-  __filename = fileURLToPath(import.meta.url);
-  __dirname = path.dirname(__filename);
-} else {
+
+try {
+  // Try using ESM import.meta.url if it exists
+  if (typeof import.meta !== "undefined" && import.meta.url) {
+    __filename = fileURLToPath(import.meta.url);
+    __dirname = path.dirname(__filename);
+  } else if (typeof __filename !== "undefined" && typeof __dirname !== "undefined") {
+    // We are in a CommonJS environment (esbuild bundle)
+    // __filename and __dirname are already globally available
+  } else {
+    __filename = path.join(__dirname, "server.ts");
+  }
+} catch (e) {
+  // Fallback if fileURLToPath throws
   __filename = path.join(__dirname, "server.ts");
 }
 
