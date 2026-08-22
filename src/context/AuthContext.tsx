@@ -115,10 +115,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         body: JSON.stringify({ email, password }),
       });
 
-      const data = await res.json();
+      let data: any;
+      try {
+        data = await res.json();
+      } catch (e) {
+        throw new Error('Server is still initializing or restarting. Please try again in a few seconds.');
+      }
 
-      if (!res.ok || !data.success) {
-        const errorMessage = data.error || 'Invalid email or password.';
+      if (!res.ok || !data?.success) {
+        const errorMessage = data?.error || 'Invalid email or password.';
         setError(errorMessage);
         return false;
       }
