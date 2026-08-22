@@ -41,4 +41,4 @@ COPY --from=builder /app/src/generated ./src/generated
 EXPOSE 5000
 
 # Start script: deploy migrations, optionally seed, and start server
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/server.cjs"]
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/server.js"]
