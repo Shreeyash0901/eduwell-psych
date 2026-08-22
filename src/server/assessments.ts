@@ -1376,6 +1376,19 @@ assessmentsRouter.get("/completed", async (req: AuthenticatedRequest, res: Respo
         reviewer: {
           select: { id: true, name: true, role: true },
         },
+        observation: {
+          select: {
+            id: true,
+            recordNumber: true,
+            category: true,
+            observation: true,
+            setting: true,
+            triggers: true,
+            interventions: true,
+            submitterName: true,
+            observedAt: true,
+          },
+        },
         domainResults: {
           include: { domain: true },
         },
@@ -1461,6 +1474,19 @@ assessmentsRouter.get("/completed", async (req: AuthenticatedRequest, res: Respo
         reviewedBy: a.reviewer?.name || null,
         reviewedAt: a.reviewedAt ? a.reviewedAt.toISOString() : null,
         respondentType: a.respondentType || "TEACHER",
+        observation: a.observation
+          ? {
+              id: a.observation.id,
+              recordNumber: a.observation.recordNumber,
+              category: a.observation.category,
+              observation: a.observation.observation,
+              setting: a.observation.setting,
+              triggers: a.observation.triggers,
+              interventions: a.observation.interventions,
+              submitterName: a.observation.submitterName,
+              observedAt: a.observation.observedAt ? a.observation.observedAt.toISOString() : null,
+            }
+          : null,
         domains: a.domainResults.map((dr) => ({
           name: dr.domain.name,
           score: Number(dr.score),
@@ -1642,6 +1668,18 @@ assessmentsRouter.put("/:id/interpretation", requireRole("PSYCHOLOGIST"), async 
       return res.status(404).json({ success: false, error: "Assessment record not found." });
     }
 
+    let observationId = assessment.observationId;
+    if (!observationId) {
+      // Check if student has a recent observation and link it
+      const recentObs = await prisma.studentObservation.findFirst({
+        where: { studentId: assessment.studentId, schoolId },
+        orderBy: { createdAt: "desc" },
+      });
+      if (recentObs) {
+        observationId = recentObs.id;
+      }
+    }
+
     const updated = await prisma.studentAssessment.update({
       where: { id: assessmentId },
       data: {
@@ -1650,13 +1688,42 @@ assessmentsRouter.put("/:id/interpretation", requireRole("PSYCHOLOGIST"), async 
         reviewedBy: req.user!.id,
         reviewedAt: new Date(),
         status: "REVIEWED",
+        ...(observationId ? { observationId } : {}),
       },
       include: {
         student: true,
         assessmentTemplate: true,
         domainResults: { include: { domain: true } },
+        observation: {
+          select: {
+            id: true,
+            recordNumber: true,
+            category: true,
+            observation: true,
+            setting: true,
+            triggers: true,
+            interventions: true,
+            submitterName: true,
+            observedAt: true,
+          },
+        },
       },
     });
+
+    // If observation is linked, update its psychologist notes and status
+    if (observationId) {
+      try {
+        await prisma.studentObservation.update({
+          where: { id: observationId },
+          data: {
+            psychologistNotes: typeof professionalInterpretation === "string" ? professionalInterpretation.trim() : "",
+            status: "REVIEWED",
+          },
+        });
+      } catch (obsErr) {
+        console.error("[ASSESSMENTS_API] Failed to update linked observation notes:", obsErr);
+      }
+    }
 
     // Notify administrators if needed
     try {

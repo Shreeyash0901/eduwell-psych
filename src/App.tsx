@@ -719,6 +719,26 @@ function MainApplication() {
                 student={activeStudent}
                 assessmentResult={assessmentResult || undefined}
                 userRole={currentUser?.role}
+                onSelectAssessmentResult={(item) => {
+                  const resObj: AssessmentResult = {
+                    id: String(item.id),
+                    studentId: item.studentId,
+                    studentName: item.studentName,
+                    protocolTitle: item.protocolTitle,
+                    date: new Date(item.completedAt).toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                    }),
+                    overallScore: item.overallScore,
+                    statusTag: 'Screening Result',
+                    domains: item.domains as any,
+                    responses: item.responses,
+                    aiSummary: item.professionalInterpretation,
+                  };
+                  setAssessmentResult(resObj);
+                  setActiveTab('assessment_result');
+                }}
                 onGenerateReport={(data) => {
                   setPsychologistReportData(data);
                   setActiveTab('student_report_preview');
